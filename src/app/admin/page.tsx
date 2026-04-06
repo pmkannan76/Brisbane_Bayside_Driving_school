@@ -1,18 +1,133 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import {
     Users, UserCheck, Calendar, DollarSign, TrendingUp,
     Search, Filter, MoreHorizontal, CheckCircle,
-    XCircle, AlertCircle, Plus, LayoutDashboard, ChevronRight, Settings, Upload, Image as ImageIcon
+    XCircle, AlertCircle, Plus, LayoutDashboard, ChevronRight, Settings, Upload, Image as ImageIcon, LogOut,
+    Car, Star, Clock, Trash2, Edit2
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import FullCalendar from '@fullcalendar/react'
+import timeGridPlugin from '@fullcalendar/timegrid'
+import dayGridPlugin from '@fullcalendar/daygrid'
+import interactionPlugin from '@fullcalendar/interaction'
+
+function ReportsTab() {
+    const today = new Date().toISOString().split('T')[0]
+    const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+    const [from, setFrom] = React.useState(firstOfMonth)
+    const [to, setTo] = React.useState(today)
+    const [downloading, setDownloading] = React.useState<string | null>(null)
+
+    const download = async (type: 'bookings' | 'earnings' | 'packages') => {
+        setDownloading(type)
+        try {
+            const res = await fetch(`/api/admin/reports?type=${type}&from=${from}&to=${to}`)
+            if (!res.ok) throw new Error('Failed to generate report')
+            const blob = await res.blob()
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = res.headers.get('content-disposition')?.split('filename="')[1]?.replace('"', '') ?? `${type}_report.csv`
+            a.click()
+            URL.revokeObjectURL(url)
+        } catch (err: any) {
+            alert('Download failed: ' + err.message)
+        } finally {
+            setDownloading(null)
+        }
+    }
+
+    const reports = [
+        {
+            type: 'bookings' as const,
+            title: 'Bookings Report',
+            description: 'All bookings with student details, instructor, lesson, payment status, and pickup address.',
+            icon: '📅',
+            color: 'bg-blue-50 border-blue-200',
+        },
+        {
+            type: 'earnings' as const,
+            title: 'Earnings by Instructor',
+            description: 'Revenue breakdown per instructor — total lessons, earnings, credit vs cash/card splits.',
+            icon: '💰',
+            color: 'bg-green-50 border-green-200',
+        },
+        {
+            type: 'packages' as const,
+            title: 'Package Sales Report',
+            description: 'Package purchases with student details, credits added, remaining credits, and expiry dates.',
+            icon: '📦',
+            color: 'bg-purple-50 border-purple-200',
+        },
+    ]
+
+    return (
+        <div className="space-y-8">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold font-outfit">Reports & Exports</h2>
+                    <p className="text-muted-foreground text-sm mt-1">Download CSV reports for bookings, earnings, and packages.</p>
+                </div>
+                <div className="flex items-center gap-3 bg-card border border-border rounded-2xl p-3">
+                    <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">From</label>
+                        <input
+                            type="date"
+                            value={from}
+                            onChange={e => setFrom(e.target.value)}
+                            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-muted/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                        />
+                    </div>
+                    <span className="text-muted-foreground">—</span>
+                    <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">To</label>
+                        <input
+                            type="date"
+                            value={to}
+                            onChange={e => setTo(e.target.value)}
+                            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-muted/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {reports.map(r => (
+                    <div key={r.type} className={`border rounded-[2rem] p-8 space-y-6 ${r.color}`}>
+                        <div className="text-4xl">{r.icon}</div>
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-bold font-outfit">{r.title}</h3>
+                            <p className="text-sm text-muted-foreground leading-relaxed">{r.description}</p>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                            Period: <span className="font-semibold">{from}</span> → <span className="font-semibold">{to}</span>
+                        </div>
+                        <Button
+                            className="w-full rounded-xl gap-2"
+                            onClick={() => download(r.type)}
+                            isLoading={downloading === r.type}
+                        >
+                            ⬇ Download CSV
+                        </Button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
+}
 
 export default function AdminDashboard() {
-    const { user, profile, loading: authLoading } = useAuth()
+    const router = useRouter()
+
+    const handleLogout = async () => {
+        await fetch('/api/admin/logout', { method: 'POST' })
+        router.push('/admin/login')
+        router.refresh()
+    }
     const [stats, setStats] = useState({
         totalRevenue: 15420,
         activeBookings: 48,
@@ -25,13 +140,53 @@ export default function AdminDashboard() {
     const [packagePurchases, setPackagePurchases] = useState<any[]>([])
     const [inquiries, setInquiries] = useState<any[]>([])
     const [allBookings, setAllBookings] = useState<any[]>([])
-    const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'lessons' | 'users' | 'packages' | 'bookings' | 'settings' | 'payments'>('overview')
+    const [instructors, setInstructors] = useState<any[]>([])
+    const [showNewInstructorModal, setShowNewInstructorModal] = useState(false)
+    const [newInstructorForm, setNewInstructorForm] = useState({ full_name: '', email: '', phone: '', bio: '', experience_years: '', car_model: '', languages: 'English', rating: '5' })
+    const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'lessons' | 'users' | 'bookings' | 'settings' | 'payments' | 'instructors' | 'reports'>('overview')
+
+    // Instructor management state
+    const [selectedInstructor, setSelectedInstructor] = useState<any | null>(null)
+    const [instructorForm, setInstructorForm] = useState({ full_name: '', email: '', bio: '', experience_years: '', car_model: '', languages: '', phone: '', rating: '' })
+    const [instructorAvailability, setInstructorAvailability] = useState<any[]>([])
+    const [availabilityLoading, setAvailabilityLoading] = useState(false)
+    const [newSlot, setNewSlot] = useState({ day_of_week: '1', start_time: '09:00', end_time: '17:00' })
+    const [addingSlotDay, setAddingSlotDay] = useState<number | null>(null)
+    const [daySlotForm, setDaySlotForm] = useState({ start_time: '09:00', end_time: '17:00' })
     const [showNewLessonModal, setShowNewLessonModal] = useState(false)
+    const [newLessonIsPackage, setNewLessonIsPackage] = useState(false)
+    const [editingLesson, setEditingLesson] = useState<any | null>(null)
+    const [lessonEditForm, setLessonEditForm] = useState({
+        title: '', description: '', price: '', duration_minutes: '',
+        is_package: false, lesson_count: '1', is_active: true,
+    })
+    const [lessonEditLoading, setLessonEditLoading] = useState(false)
+    const [lessonEditError, setLessonEditError] = useState<string | null>(null)
     const [showAdjustCreditsModal, setShowAdjustCreditsModal] = useState<string | null>(null)
+    const [editingUser, setEditingUser] = useState<any | null>(null)
+    const [userForm, setUserForm] = useState({ full_name: '', phone: '', address: '', credits_remaining: 0, package_expiry: '' })
+    const [userFormLoading, setUserFormLoading] = useState(false)
+    const [userFormError, setUserFormError] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
     const [logoUrl, setLogoUrl] = useState<string>('')
     const [isUploadingLogo, setIsUploadingLogo] = useState(false)
     const [showManualBookingModal, setShowManualBookingModal] = useState(false)
+    const [editingBooking, setEditingBooking] = useState<any | null>(null)
+    const [bookingEditForm, setBookingEditForm] = useState({
+        instructorId: '', lessonId: '', date: '', time: '',
+        status: 'scheduled', paymentStatus: 'pay_in_person',
+        pickupAddress: '', vehicleType: 'car', transmissionType: 'auto',
+    })
+    const [bookingEditLoading, setBookingEditLoading] = useState(false)
+    const [bookingEditError, setBookingEditError] = useState<string | null>(null)
+    const [availableSlots, setAvailableSlots] = useState<{ value: string; label: string }[]>([])
+    const [slotsLoading, setSlotsLoading] = useState(false)
+    const [slotsMessage, setSlotsMessage] = useState<string | null>(null)
+    const [newBookingSlots, setNewBookingSlots] = useState<{ value: string; label: string }[]>([])
+    const [newBookingSlotsLoading, setNewBookingSlotsLoading] = useState(false)
+    const [newBookingSlotsMessage, setNewBookingSlotsMessage] = useState<string | null>(null)
+    const [manualBookingTab, setManualBookingTab] = useState<'existing' | 'new'>('existing')
+    const [manualBookingError, setManualBookingError] = useState<string | null>(null)
     const [bookingData, setBookingData] = useState({
         studentId: '',
         instructorId: '',
@@ -39,142 +194,111 @@ export default function AdminDashboard() {
         date: '',
         time: '',
         transmission: 'auto',
-        deductCredit: true
+        vehicleType: 'car' as 'car' | 'truck',
+        deductCredit: false,
+        pickupAddress: '',
+        paymentMethod: 'pay_in_person' as 'paid' | 'pay_in_person',
+    })
+    const [newStudentForm, setNewStudentForm] = useState({
+        full_name: '',
+        email: '',
+        phone: '',
     })
 
     useEffect(() => {
-        if (user) {
-            fetchAdminData()
+        fetchAdminData()
+    }, [])
+
+    // Fetch available time slots whenever instructor, date, or lesson changes in the edit modal
+    useEffect(() => {
+        const { instructorId, date, lessonId } = bookingEditForm
+        if (!editingBooking || !instructorId || !date) {
+            setAvailableSlots([])
+            setSlotsMessage(null)
+            return
         }
-    }, [user])
+        const lesson = lessons.find((l: any) => l.id === lessonId)
+        const durationMins = lesson?.duration_minutes || 60
+        setSlotsLoading(true)
+        setSlotsMessage(null)
+        setAvailableSlots([])
+        fetch(`/api/admin/available-slots?instructorId=${instructorId}&date=${date}&durationMins=${durationMins}&excludeBookingId=${editingBooking.id}`)
+            .then(r => r.json())
+            .then(({ slots, message }) => {
+                setAvailableSlots(slots || [])
+                setSlotsMessage(message || (slots?.length === 0 ? 'No available slots on this day.' : null))
+            })
+            .catch(() => setSlotsMessage('Failed to load available slots.'))
+            .finally(() => setSlotsLoading(false))
+    }, [bookingEditForm.instructorId, bookingEditForm.date, bookingEditForm.lessonId, editingBooking])
+
+    // Fetch available slots for the new booking modal
+    useEffect(() => {
+        const { instructorId, date, lessonId } = bookingData
+        if (!instructorId || !date) {
+            setNewBookingSlots([])
+            setNewBookingSlotsMessage(null)
+            return
+        }
+        const lesson = lessons.find((l: any) => l.id === lessonId)
+        const durationMins = lesson?.duration_minutes || 60
+        setNewBookingSlotsLoading(true)
+        setNewBookingSlotsMessage(null)
+        setNewBookingSlots([])
+        fetch(`/api/admin/available-slots?instructorId=${instructorId}&date=${date}&durationMins=${durationMins}`)
+            .then(r => r.json())
+            .then(({ slots, message }) => {
+                setNewBookingSlots(slots || [])
+                setNewBookingSlotsMessage(message || (slots?.length === 0 ? 'No available slots on this day.' : null))
+            })
+            .catch(() => setNewBookingSlotsMessage('Failed to load available slots.'))
+            .finally(() => setNewBookingSlotsLoading(false))
+    }, [bookingData.instructorId, bookingData.date, bookingData.lessonId, lessons])
 
     const fetchAdminData = async () => {
         setLoading(true)
         try {
-            // 1. Fetch Package Purchases
-            try {
-                const { data: purchases, error: pError } = await supabase
-                    .from('package_purchases')
-                    .select('*')
-                    .order('created_at', { ascending: false })
-                if (pError) console.error("Packages error:", pError)
-                else {
-                    const packageRevenue = purchases?.reduce((acc, p) => acc + (p.amount || 0), 0) || 0
-                    setStats(s => ({ ...s, packageRevenue }))
-                }
-            } catch (e) { console.error(e) }
+            const res = await fetch('/api/admin/data')
+            if (!res.ok) throw new Error('Failed to fetch admin data')
+            const data = await res.json()
 
-            // 2. Fetch Stats & Bookings
-            try {
-                const { data: bookings, error: bError } = await supabase.from('bookings').select('*, lesson:lessons(price)')
-                const { data: profiles, error: prError } = await supabase.from('profiles').select('role')
+            const { allUsers, lessons, packagePurchases, inquiries, allBookings, settings } = data
 
-                const singleLessonRevenue = bookings?.filter(b => b.payment_status === 'paid')
-                    .reduce((acc, b) => acc + (b.lesson?.price || 0), 0) || 0
+            setAllUsers(allUsers)
+            setLessons(lessons)
+            setPackagePurchases(packagePurchases)
+            setInquiries(inquiries)
+            setAllBookings(allBookings)
+            setInstructors(data.instructors || [])
 
-                const activeBookings = bookings?.filter(b => b.status === 'scheduled').length || 0
-                const newStudents = profiles?.filter(p => p.role === 'student').length || 0
-                const pendingInstructors = profiles?.filter(p => p.role === 'instructor').length || 0
-
-                setStats(s => ({
-                    ...s,
-                    totalRevenue: singleLessonRevenue + (s as any).packageRevenue || 0,
-                    activeBookings,
-                    pendingInstructors,
-                    newStudents
-                }))
-            } catch (e) { console.error(e) }
-
-            // 3. Fetch Recent Users
-            try {
-                const { data: users, error: uError } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .order('updated_at', { ascending: false })
-                    .limit(10)
-
-                if (users) {
-                    setRecentUsers(users.map(u => ({
+            setRecentUsers(
+                [...allUsers]
+                    .sort((a: any, b: any) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+                    .slice(0, 10)
+                    .map((u: any) => ({
                         id: u.id,
                         name: u.full_name || 'Anonymous',
-                        email: u.email || 'N/A',
-                        role: u.role,
-                        status: u.status || 'active',
-                        joined: new Date(u.updated_at).toLocaleDateString()
-                    })))
-                }
-            } catch (e) { console.error(e) }
+                        status: 'active',
+                        joined: new Date(u.updated_at).toLocaleDateString(),
+                    }))
+            )
 
-            // 4. Fetch Lessons
-            try {
-                const { data: lessonData, error: lError } = await supabase
-                    .from('lessons')
-                    .select('*')
-                    .order('created_at', { ascending: false })
+            const logoSetting = settings.find((s: any) => s.key === 'logo_url')
+            if (logoSetting?.value) setLogoUrl(logoSetting.value)
 
-                if (lessonData) setLessons(lessonData)
-            } catch (e) { console.error(e) }
+            const packageRevenue = packagePurchases.reduce((acc: number, p: any) => acc + (p.amount || 0), 0)
+            const singleLessonRevenue = allBookings
+                .filter((b: any) => b.payment_status === 'paid')
+                .reduce((acc: number, b: any) => acc + (b.lesson?.price || 0), 0)
 
-            // 5. Fetch All Users for Management
-            try {
-                const { data: userData, error: allUError } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .order('full_name', { ascending: true })
-
-                if (userData) setAllUsers(userData)
-            } catch (e) { console.error(e) }
-
-            // 6. Fetch Complete Package Purchases for Table
-            try {
-                const { data: fullPurchases, error: fpError } = await supabase
-                    .from('package_purchases')
-                    .select(`
-                        *,
-                        student:profiles(full_name)
-                    `)
-                    .order('created_at', { ascending: false })
-
-                if (fpError) console.error("Full purchases error:", fpError)
-                if (fullPurchases) setPackagePurchases(fullPurchases)
-            } catch (e) { console.error(e) }
-
-            // 7. Fetch Inquiries
-            try {
-                const { data: inquiryData } = await supabase
-                    .from('inquiries')
-                    .select('*')
-                    .order('created_at', { ascending: false })
-                if (inquiryData) setInquiries(inquiryData)
-            } catch (e) { console.error(e) }
-
-            // 8. Fetch All Bookings for Management
-            try {
-                const { data: allBookingsData, error: allBError } = await supabase
-                    .from('bookings')
-                    .select(`
-                        *
-                    `)
-                    .order('start_time', { ascending: false })
-                
-                if (allBError) {
-                    console.error("All bookings error:", allBError)
-                } else if (allBookingsData) {
-                    // Manual join just in case foreign keys fail
-                    setAllBookings(allBookingsData)
-                }
-            } catch (e) { console.error(e) }
-
-            // 9. Fetch Settings (Logo URL)
-            try {
-                const { data: settings } = await supabase.from('settings').select('*')
-                if (settings) {
-                    const logoSetting = settings.find(s => s.key === 'logo_url')
-                    if (logoSetting?.value) setLogoUrl(logoSetting.value)
-                }
-            } catch (e) { console.error(e) }
-        } catch(generalError) {
-             console.error("Fatal fetchAdminData error:", generalError);
+            setStats({
+                totalRevenue: packageRevenue + singleLessonRevenue,
+                activeBookings: allBookings.filter((b: any) => b.status === 'scheduled').length,
+                newStudents: allUsers.length,
+                pendingInstructors: instructors.length,
+            })
+        } catch (e) {
+            console.error('fetchAdminData error:', e)
         } finally {
             setLoading(false)
         }
@@ -182,192 +306,480 @@ export default function AdminDashboard() {
 
     const adjustStudentCredits = async (studentId: string, amount: number) => {
         try {
-            // Get current credits
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('credits_remaining')
-                .eq('id', studentId)
-                .single()
-
-            const newCredits = Math.max(0, (profile?.credits_remaining || 0) + amount)
-
-            const { error } = await supabase
-                .from('profiles')
-                .update({ credits_remaining: newCredits })
-                .eq('id', studentId)
-
-            if (error) throw error
+            const res = await fetch(`/api/admin/users/${studentId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'adjust_credits', amount }),
+            })
+            if (!res.ok) throw new Error((await res.json()).error)
             fetchAdminData()
             setShowAdjustCreditsModal(null)
-        } catch (err) {
-            alert('Error adjusting credits')
+        } catch (err: any) {
+            alert('Error adjusting credits: ' + err.message)
         }
     }
 
     const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
-
         setIsUploadingLogo(true)
         try {
-            const fileExt = file.name.split('.').pop()
-            const fileName = `logo_${Date.now()}.${fileExt}`
-
-            const { error: uploadError } = await supabase.storage
-                .from('assets')
-                .upload(fileName, file, { cacheControl: '3600', upsert: true })
-
-            if (uploadError) throw uploadError
-
-            const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(fileName)
-
-            const { error: settingsError } = await supabase
-                .from('settings')
-                .upsert({ key: 'logo_url', value: publicUrl })
-
-            if (settingsError) throw settingsError
-
-            setLogoUrl(publicUrl)
+            const form = new FormData()
+            form.append('file', file)
+            const res = await fetch('/api/admin/logo', { method: 'POST', body: form })
+            if (!res.ok) throw new Error((await res.json()).error)
+            const { url } = await res.json()
+            setLogoUrl(url)
             alert('Logo updated successfully!')
         } catch (err: any) {
-            console.error('Logo upload error:', err.message)
             alert('Failed to upload logo: ' + err.message)
         } finally {
             setIsUploadingLogo(false)
         }
     }
 
-    const updateUserRole = async (userId: string, newRole: string) => {
+const toggleLessonStatus = async (id: string, currentStatus: boolean) => {
         try {
-            const { error } = await supabase
-                .from('profiles')
-                .update({ role: newRole })
-                .eq('id', userId)
-            if (error) throw error
+            const res = await fetch(`/api/admin/lessons/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: !currentStatus }),
+            })
+            if (!res.ok) throw new Error((await res.json()).error)
             fetchAdminData()
-        } catch (err) {
-            alert('Error updating user role')
+        } catch (err: any) {
+            alert('Error updating lesson: ' + err.message)
         }
     }
 
-    const toggleLessonStatus = async (id: string, currentStatus: boolean) => {
+    const openEditLesson = (lesson: any) => {
+        setLessonEditForm({
+            title: lesson.title || '',
+            description: lesson.description || '',
+            price: String(lesson.price ?? ''),
+            duration_minutes: String(lesson.duration_minutes ?? ''),
+            is_package: !!lesson.is_package,
+            lesson_count: String(lesson.lesson_count ?? '1'),
+            is_active: !!lesson.is_active,
+        })
+        setLessonEditError(null)
+        setEditingLesson(lesson)
+    }
+
+    const handleSaveLesson = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!editingLesson) return
+
+        const duration = parseInt(lessonEditForm.duration_minutes)
+        const count = parseInt(lessonEditForm.lesson_count)
+
+        if (lessonEditForm.is_package) {
+            if (!count || count < 2) {
+                setLessonEditError('Package must have at least 2 lessons.')
+                return
+            }
+            if (duration % count !== 0) {
+                setLessonEditError(`Total duration (${duration} mins) must divide evenly by lesson count (${count}). Each session would be ${(duration / count).toFixed(2)} mins — not a whole number.`)
+                return
+            }
+        }
+
+        setLessonEditLoading(true)
+        setLessonEditError(null)
         try {
-            const { error } = await supabase
-                .from('lessons')
-                .update({ is_active: !currentStatus })
-                .eq('id', id)
-            if (error) throw error
+            const res = await fetch(`/api/admin/lessons/${editingLesson.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: lessonEditForm.title,
+                    description: lessonEditForm.description,
+                    price: parseFloat(lessonEditForm.price),
+                    duration_minutes: duration,
+                    is_package: lessonEditForm.is_package,
+                    lesson_count: lessonEditForm.is_package ? count : 1,
+                    is_active: lessonEditForm.is_active,
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error)
+            setEditingLesson(null)
             fetchAdminData()
-        } catch (err) {
-            alert('Error updating lesson')
+        } catch (err: any) {
+            setLessonEditError(err.message)
+        } finally {
+            setLessonEditLoading(false)
         }
     }
 
     const deleteUser = async (id: string) => {
         if (!confirm('Are you sure you want to delete this user?')) return
         try {
-            const { error } = await supabase.from('profiles').delete().eq('id', id)
-            if (error) throw error
+            const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' })
+            if (!res.ok) throw new Error((await res.json()).error)
             fetchAdminData()
-        } catch(err: any) { alert('Error deleting user: ' + err.message) }
+        } catch (err: any) {
+            alert('Error deleting user: ' + err.message)
+        }
+    }
+
+    const openEditUser = (u: any) => {
+        setEditingUser(u)
+        setUserForm({
+            full_name: u.full_name || '',
+            phone: u.phone || '',
+            address: u.address || '',
+            credits_remaining: u.credits_remaining || 0,
+            package_expiry: u.package_expiry ? u.package_expiry.slice(0, 10) : '',
+        })
+        setUserFormError(null)
+    }
+
+    const saveUserEdit = async () => {
+        if (!editingUser) return
+        setUserFormLoading(true)
+        setUserFormError(null)
+        try {
+            const payload = {
+                full_name: userForm.full_name,
+                phone: userForm.phone,
+                address: userForm.address,
+                credits_remaining: Number(userForm.credits_remaining),
+                package_expiry: userForm.package_expiry ? new Date(userForm.package_expiry).toISOString() : null,
+            }
+            const res = await fetch(`/api/admin/users/${editingUser.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            })
+            if (!res.ok) throw new Error((await res.json()).error)
+            setEditingUser(null)
+            fetchAdminData()
+        } catch (err: any) {
+            setUserFormError(err.message)
+        } finally {
+            setUserFormLoading(false)
+        }
     }
 
     const deleteLesson = async (id: string) => {
         if (!confirm('Are you sure you want to delete this lesson? This cannot be undone.')) return
         try {
-            const { error } = await supabase
-                .from('lessons')
-                .delete()
-                .eq('id', id)
-            if (error) throw error
+            const res = await fetch(`/api/admin/lessons/${id}`, { method: 'DELETE' })
+            if (!res.ok) throw new Error((await res.json()).error)
             fetchAdminData()
         } catch (err: any) {
-            alert('Error deleting lesson: ' + (err.message || 'Check if there are existing bookings for this lesson.'))
+            alert('Error deleting lesson: ' + err.message)
         }
     }
 
     const deleteBooking = async (bookingId: string) => {
         if (!confirm('Are you sure you want to completely delete this booking?')) return
         try {
-            const { error } = await supabase
-                .from('bookings')
-                .delete()
-                .eq('id', bookingId)
-            if (error) throw error
+            const res = await fetch(`/api/admin/bookings/${bookingId}`, { method: 'DELETE' })
+            if (!res.ok) throw new Error((await res.json()).error)
             fetchAdminData()
         } catch (err: any) {
             alert('Error deleting booking: ' + err.message)
         }
     }
 
-    const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
+    const openEditBooking = (b: any) => {
+        const start = new Date(b.start_time)
+        const dateStr = start.toISOString().slice(0, 10)
+        const timeStr = start.toTimeString().slice(0, 5)
+        setBookingEditForm({
+            instructorId: b.instructor_id || '',
+            lessonId: b.lesson_id || '',
+            date: dateStr,
+            time: timeStr,
+            status: b.status || 'scheduled',
+            paymentStatus: b.payment_status || 'pay_in_person',
+            pickupAddress: b.pickup_address || '',
+            vehicleType: b.vehicle_type || 'car',
+            transmissionType: b.transmission_type || 'auto',
+        })
+        setBookingEditError(null)
+        setEditingBooking(b)
+    }
+
+    const handleSaveBookingEdit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!editingBooking) return
+        setBookingEditLoading(true)
+        setBookingEditError(null)
+        try {
+            const res = await fetch(`/api/admin/bookings/${editingBooking.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bookingEditForm),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error)
+            setEditingBooking(null)
+            fetchAdminData()
+        } catch (err: any) {
+            setBookingEditError(err.message)
+        } finally {
+            setBookingEditLoading(false)
+        }
+    }
+
+const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         const formData = new FormData(e.currentTarget)
         const title = formData.get('title') as string
+        const description = formData.get('description') as string
         const price = parseFloat(formData.get('price') as string)
-        const duration = parseInt(formData.get('duration') as string)
+        const duration_minutes = parseInt(formData.get('duration') as string)
+        const is_package = formData.get('is_package') === 'on'
+        const lesson_count = is_package ? parseInt(formData.get('lesson_count') as string) : 1
+
+        // Client-side validation
+        if (is_package) {
+            if (!lesson_count || lesson_count < 2) {
+                alert('Package must have at least 2 lessons.')
+                return
+            }
+            if (duration_minutes % lesson_count !== 0) {
+                alert(`Total duration (${duration_minutes} mins) must divide evenly by lesson count (${lesson_count}). Each session would be ${(duration_minutes / lesson_count).toFixed(2)} mins — not a whole number.`)
+                return
+            }
+        }
 
         try {
-            const { error } = await supabase
-                .from('lessons')
-                .insert({ title, price, duration_minutes: duration })
-            if (error) throw error
+            const res = await fetch('/api/admin/lessons', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, description, price, duration_minutes, is_package, lesson_count }),
+            })
+            if (!res.ok) throw new Error((await res.json()).error)
             setShowNewLessonModal(false)
             fetchAdminData()
-        } catch (err) {
-            alert('Error adding lesson')
+        } catch (err: any) {
+            alert('Error adding lesson: ' + err.message)
         }
     }
 
     const handleManualBooking = async (e: React.FormEvent) => {
         e.preventDefault()
+        setManualBookingError(null)
         setLoading(true)
         try {
-            const startTime = new Date(`${bookingData.date}T${bookingData.time}`)
-            const lesson = lessons.find(l => l.id === bookingData.lessonId)
-            const endTime = new Date(startTime.getTime() + (lesson?.duration_minutes || 60) * 60000)
+            const res = await fetch('/api/admin/bookings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...bookingData,
+                    newStudent: manualBookingTab === 'new' ? newStudentForm : null,
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error)
 
-            const { error } = await supabase
-                .from('bookings')
-                .insert({
-                    student_id: bookingData.studentId,
-                    instructor_id: bookingData.instructorId,
-                    lesson_id: bookingData.lessonId,
-                    start_time: startTime.toISOString(),
-                    end_time: endTime.toISOString(),
-                    status: 'scheduled',
-                    payment_status: 'paid',
-                    pickup_address: 'Manual Admin Booking',
-                    transmission_type: bookingData.transmission,
-                    credits_used: bookingData.deductCredit ? 1 : 0
-                })
-
-            if (error) throw error
-
-            if (bookingData.deductCredit) {
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('credits_remaining')
-                    .eq('id', bookingData.studentId)
-                    .single()
-
-                await supabase
-                    .from('profiles')
-                    .update({ credits_remaining: Math.max(0, (profile?.credits_remaining || 0) - 1) })
-                    .eq('id', bookingData.studentId)
-            }
-
-            alert('Manual booking successful!')
             setShowManualBookingModal(false)
+            setBookingData({ studentId: '', instructorId: '', lessonId: '', date: '', time: '', transmission: 'auto', vehicleType: 'car', deductCredit: false, pickupAddress: '', paymentMethod: 'pay_in_person' })
+            setNewStudentForm({ full_name: '', email: '', phone: '' })
+            setManualBookingTab('existing')
             fetchAdminData()
         } catch (err: any) {
-            alert('Error creating manual booking: ' + err.message)
+            setManualBookingError(err.message)
         } finally {
             setLoading(false)
         }
     }
 
-    if (authLoading) return null
+    const selectInstructor = async (instructor: any) => {
+        setSelectedInstructor(instructor)
+        setInstructorForm({
+            full_name: instructor.full_name || '',
+            email: instructor.email || '',
+            bio: instructor.bio || '',
+            experience_years: String(instructor.experience_years || ''),
+            car_model: instructor.car_model || '',
+            languages: (instructor.languages || ['English']).join(', '),
+            phone: instructor.phone || '',
+            rating: String(instructor.rating || '5'),
+        })
+        setAvailabilityLoading(true)
+        try {
+            const res = await fetch(`/api/admin/instructors/${instructor.id}/availability`)
+            if (res.ok) setInstructorAvailability(await res.json())
+        } finally {
+            setAvailabilityLoading(false)
+        }
+    }
+
+    const handleCreateInstructor = async (e: React.FormEvent) => {
+        e.preventDefault()
+        try {
+            const res = await fetch('/api/admin/instructors', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    full_name: newInstructorForm.full_name,
+                    email: newInstructorForm.email,
+                    phone: newInstructorForm.phone,
+                    bio: newInstructorForm.bio,
+                    experience_years: parseInt(newInstructorForm.experience_years) || 0,
+                    car_model: newInstructorForm.car_model,
+                    languages: newInstructorForm.languages.split(',').map(l => l.trim()).filter(Boolean),
+                    rating: parseFloat(newInstructorForm.rating) || 5,
+                }),
+            })
+            if (!res.ok) throw new Error((await res.json()).error)
+            setShowNewInstructorModal(false)
+            setNewInstructorForm({ full_name: '', email: '', phone: '', bio: '', experience_years: '', car_model: '', languages: 'English', rating: '5' })
+            fetchAdminData()
+        } catch (err: any) {
+            alert('Error creating instructor: ' + err.message)
+        }
+    }
+
+    const handleSaveInstructor = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!selectedInstructor) return
+        try {
+            const res = await fetch(`/api/admin/instructors/${selectedInstructor.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    full_name: instructorForm.full_name,
+                    email: instructorForm.email || '',
+                    phone: instructorForm.phone,
+                    bio: instructorForm.bio,
+                    experience_years: parseInt(instructorForm.experience_years) || 0,
+                    car_model: instructorForm.car_model,
+                    languages: instructorForm.languages.split(',').map(l => l.trim()).filter(Boolean),
+                    rating: parseFloat(instructorForm.rating) || 5,
+                }),
+            })
+            if (!res.ok) throw new Error((await res.json()).error)
+            fetchAdminData()
+            alert('Instructor updated successfully!')
+        } catch (err: any) {
+            alert('Error saving instructor: ' + err.message)
+        }
+    }
+
+    const handleDeleteInstructor = async (id: string) => {
+        if (!confirm('Delete this instructor? Their availability slots will also be removed.')) return
+        try {
+            const res = await fetch(`/api/admin/instructors/${id}`, { method: 'DELETE' })
+            if (!res.ok) throw new Error((await res.json()).error)
+            setSelectedInstructor(null)
+            fetchAdminData()
+        } catch (err: any) {
+            alert('Error deleting instructor: ' + err.message)
+        }
+    }
+
+    const handleAddSlot = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!selectedInstructor) return
+        try {
+            const res = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    day_of_week: parseInt(newSlot.day_of_week),
+                    start_time: newSlot.start_time,
+                    end_time: newSlot.end_time,
+                }),
+            })
+            if (!res.ok) throw new Error((await res.json()).error)
+            setNewSlot({ day_of_week: '1', start_time: '09:00', end_time: '17:00' })
+            const updated = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`)
+            if (updated.ok) setInstructorAvailability(await updated.json())
+        } catch (err: any) {
+            alert('Error adding slot: ' + err.message)
+        }
+    }
+
+    const handleAddSlotForDay = async (dayIndex: number) => {
+        if (!selectedInstructor) return
+        try {
+            const res = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    day_of_week: dayIndex,
+                    start_time: daySlotForm.start_time,
+                    end_time: daySlotForm.end_time,
+                }),
+            })
+            if (!res.ok) throw new Error((await res.json()).error)
+            const updated = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`)
+            if (updated.ok) setInstructorAvailability(await updated.json())
+            setAddingSlotDay(null)
+            setDaySlotForm({ start_time: '09:00', end_time: '17:00' })
+        } catch (err: any) {
+            alert('Error adding slot: ' + err.message)
+        }
+    }
+
+    const toMins = (t: string) => { const [h, m] = t.slice(0, 5).split(':').map(Number); return h * 60 + m }
+
+    const hasOverlap = (dayOfWeek: number, startTime: string, endTime: string, excludeId?: string) => {
+        return instructorAvailability
+            .filter(s => s.day_of_week === dayOfWeek && s.id !== excludeId)
+            .some(s => toMins(startTime) < toMins(s.end_time) && toMins(endTime) > toMins(s.start_time))
+    }
+
+    const handleCalendarSelect = async (info: any) => {
+        if (!selectedInstructor) return
+        const dayOfWeek = info.start.getDay()
+        const startTime = info.start.toTimeString().slice(0, 5)
+        const endTime = info.end.toTimeString().slice(0, 5)
+
+        if (startTime >= endTime) {
+            alert('End time must be after start time.')
+            return
+        }
+        if (hasOverlap(dayOfWeek, startTime, endTime)) {
+            alert(`This slot overlaps with an existing availability slot for ${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayOfWeek]}.`)
+            return
+        }
+        try {
+            const res = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ day_of_week: dayOfWeek, start_time: startTime, end_time: endTime }),
+            })
+            if (!res.ok) throw new Error((await res.json()).error)
+            const updated = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`)
+            if (updated.ok) setInstructorAvailability(await updated.json())
+        } catch (err: any) {
+            alert('Error adding slot: ' + err.message)
+        }
+    }
+
+    const handleDeleteSlot = async (slotId: string) => {
+        if (!selectedInstructor) return
+        try {
+            const res = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability/${slotId}`, { method: 'DELETE' })
+            if (!res.ok) throw new Error((await res.json()).error)
+            setInstructorAvailability(prev => prev.filter(s => s.id !== slotId))
+        } catch (err: any) {
+            alert('Error deleting slot: ' + err.message)
+        }
+    }
+
+    const handleToggleSlot = async (slotId: string, current: boolean) => {
+        if (!selectedInstructor) return
+        try {
+            const res = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability/${slotId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: !current }),
+            })
+            if (!res.ok) throw new Error((await res.json()).error)
+            setInstructorAvailability(prev => prev.map(s => s.id === slotId ? { ...s, is_active: !current } : s))
+        } catch (err: any) {
+            alert('Error updating slot: ' + err.message)
+        }
+    }
+
+    const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-12 space-y-12">
@@ -382,6 +794,13 @@ export default function AdminDashboard() {
                     </div>
                 </div>
                 <div className="flex gap-4">
+                    <Button
+                        variant="outline"
+                        className="rounded-2xl gap-2 text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={handleLogout}
+                    >
+                        <LogOut className="w-4 h-4" /> Logout
+                    </Button>
                     <Button
                         variant={activeTab === 'overview' ? 'accent' : 'outline'}
                         className="rounded-2xl"
@@ -411,13 +830,6 @@ export default function AdminDashboard() {
                         Users
                     </Button>
                     <Button
-                        variant={activeTab === 'packages' ? 'accent' : 'outline'}
-                        className="rounded-2xl"
-                        onClick={() => setActiveTab('packages')}
-                    >
-                        Packages
-                    </Button>
-                    <Button
                         variant={activeTab === 'bookings' ? 'accent' : 'outline'}
                         className="rounded-2xl"
                         onClick={() => setActiveTab('bookings')}
@@ -430,6 +842,20 @@ export default function AdminDashboard() {
                         onClick={() => setActiveTab('payments')}
                     >
                         Payments
+                    </Button>
+                    <Button
+                        variant={activeTab === 'instructors' ? 'accent' : 'outline'}
+                        className="rounded-2xl"
+                        onClick={() => { setActiveTab('instructors'); setSelectedInstructor(null) }}
+                    >
+                        Instructors
+                    </Button>
+                    <Button
+                        variant={activeTab === 'reports' ? 'accent' : 'outline'}
+                        className="rounded-2xl"
+                        onClick={() => setActiveTab('reports')}
+                    >
+                        Reports
                     </Button>
                     <Button
                         variant={activeTab === 'settings' ? 'accent' : 'outline'}
@@ -474,9 +900,9 @@ export default function AdminDashboard() {
                 ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+            <div>
                 {/* Main Content Area based on activeTab */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className="space-y-6">
                     {activeTab === 'overview' && (
                         <>
                             <div className="flex justify-between items-center">
@@ -496,7 +922,6 @@ export default function AdminDashboard() {
                                     <thead>
                                         <tr className="bg-muted/50 text-xs font-bold uppercase tracking-widest text-muted-foreground">
                                             <th className="px-6 py-5">User</th>
-                                            <th className="px-6 py-5">Role</th>
                                             <th className="px-6 py-5">Status</th>
                                             <th className="px-6 py-5 text-right">Action</th>
                                         </tr>
@@ -505,7 +930,6 @@ export default function AdminDashboard() {
                                         {recentUsers.map(u => (
                                             <tr key={u.id} className="hover:bg-muted/30 transition-colors group">
                                                 <td className="px-6 py-4 text-sm font-medium">{u.name}</td>
-                                                <td className="px-6 py-4 capitalize text-sm">{u.role}</td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${u.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
                                                         {u.status}
@@ -604,10 +1028,50 @@ export default function AdminDashboard() {
                                     <h3 className="font-bold">Add New Lesson</h3>
                                     <form onSubmit={handleAddLesson} className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <input name="title" placeholder="Lesson Title" required className="bg-background border border-border p-2 rounded-lg" />
-                                        <input name="price" type="number" step="0.01" placeholder="Price" required className="bg-background border border-border p-2 rounded-lg" />
-                                        <input name="duration" type="number" placeholder="Duration (mins)" required className="bg-background border border-border p-2 rounded-lg" />
+                                        <input name="price" type="number" step="0.01" placeholder="Price ($)" required className="bg-background border border-border p-2 rounded-lg" />
+                                        <input name="duration" type="number" placeholder="Total Duration (mins)" required className="bg-background border border-border p-2 rounded-lg" />
+                                        <textarea name="description" placeholder="Description (optional)" rows={2} className="md:col-span-3 bg-background border border-border p-2 rounded-lg resize-none" />
+
+                                        {/* Package bundle toggle */}
+                                        <div className="md:col-span-3 flex items-center gap-3 p-4 bg-background border border-border rounded-xl">
+                                            <input
+                                                id="is_package"
+                                                name="is_package"
+                                                type="checkbox"
+                                                checked={newLessonIsPackage}
+                                                onChange={e => setNewLessonIsPackage(e.target.checked)}
+                                                className="w-4 h-4 accent-accent cursor-pointer"
+                                            />
+                                            <label htmlFor="is_package" className="text-sm font-bold cursor-pointer select-none">
+                                                This is a package bundle (multiple lessons)
+                                            </label>
+                                        </div>
+
+                                        {newLessonIsPackage && (
+                                            <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-accent/5 border border-accent/20 rounded-xl">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Number of Lessons in Package</label>
+                                                    <input
+                                                        name="lesson_count"
+                                                        type="number"
+                                                        min="2"
+                                                        placeholder="e.g. 5"
+                                                        required={newLessonIsPackage}
+                                                        className="w-full bg-background border border-border p-2 rounded-lg"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Validation rule</label>
+                                                    <p className="text-xs text-muted-foreground pt-2">
+                                                        Total duration ÷ lesson count must be a whole number.<br />
+                                                        e.g. 300 mins ÷ 5 lessons = 60 mins per session ✓
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         <div className="md:col-span-3 flex justify-end gap-2">
-                                            <Button type="button" variant="ghost" onClick={() => setShowNewLessonModal(false)}>Cancel</Button>
+                                            <Button type="button" variant="ghost" onClick={() => { setShowNewLessonModal(false); setNewLessonIsPackage(false) }}>Cancel</Button>
                                             <Button type="submit">Save Lesson</Button>
                                         </div>
                                     </form>
@@ -619,6 +1083,7 @@ export default function AdminDashboard() {
                                     <thead>
                                         <tr className="bg-muted/50 text-xs font-bold uppercase tracking-widest text-muted-foreground">
                                             <th className="px-6 py-5">Title</th>
+                                            <th className="px-6 py-5">Type</th>
                                             <th className="px-6 py-5">Price</th>
                                             <th className="px-6 py-5">Duration</th>
                                             <th className="px-6 py-5">Status</th>
@@ -628,9 +1093,24 @@ export default function AdminDashboard() {
                                     <tbody className="divide-y divide-border/50">
                                         {lessons.map(lesson => (
                                             <tr key={lesson.id} className="hover:bg-muted/30 transition-colors">
-                                                <td className="px-6 py-4 text-sm font-medium">{lesson.title}</td>
+                                                <td className="px-6 py-4 text-sm font-medium">
+                                                    {lesson.title}
+                                                    {lesson.description && <p className="text-xs text-muted-foreground truncate max-w-xs">{lesson.description}</p>}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm">
+                                                    {lesson.is_package ? (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-accent/10 text-accent text-[10px] font-bold rounded-full uppercase tracking-wide">
+                                                            Bundle · {lesson.lesson_count} lessons
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">Single</span>
+                                                    )}
+                                                </td>
                                                 <td className="px-6 py-4 text-sm font-bold">${lesson.price}</td>
-                                                <td className="px-6 py-4 text-sm text-muted-foreground">{lesson.duration_minutes}m</td>
+                                                <td className="px-6 py-4 text-sm text-muted-foreground">
+                                                    {lesson.duration_minutes}m
+                                                    {lesson.is_package && <span className="text-xs text-muted-foreground/70 block">{lesson.duration_minutes / lesson.lesson_count}m/session</span>}
+                                                </td>
                                                 <td className="px-6 py-4">
                                                     <button
                                                         onClick={() => toggleLessonStatus(lesson.id, lesson.is_active)}
@@ -640,7 +1120,7 @@ export default function AdminDashboard() {
                                                     </button>
                                                 </td>
                                                 <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                                    <Button variant="ghost" size="sm" className="text-accent" onClick={() => alert('Editing coming soon!')}>Edit</Button>
+                                                    <Button variant="ghost" size="sm" className="text-accent" onClick={() => openEditLesson(lesson)}>Edit</Button>
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
@@ -676,7 +1156,6 @@ export default function AdminDashboard() {
                                     <thead>
                                         <tr className="bg-muted/50 text-xs font-bold uppercase tracking-widest text-muted-foreground">
                                             <th className="px-6 py-5">Name</th>
-                                            <th className="px-6 py-5">Role</th>
                                             <th className="px-6 py-5">Credits</th>
                                             <th className="px-6 py-5 text-right">Action</th>
                                         </tr>
@@ -688,54 +1167,39 @@ export default function AdminDashboard() {
                                                     <p className="font-medium text-sm">{u.full_name}</p>
                                                     <p className="text-xs text-muted-foreground">{u.phone || 'No phone'}</p>
                                                 </td>
-                                                <td className="px-6 py-4 capitalize text-sm">
-                                                    <select
-                                                        value={u.role}
-                                                        onChange={(e) => updateUserRole(u.id, e.target.value)}
-                                                        className="bg-transparent border-none font-medium cursor-pointer focus:ring-0"
-                                                    >
-                                                        <option value="student">Student</option>
-                                                        <option value="instructor">Instructor</option>
-                                                        <option value="admin">Admin</option>
-                                                    </select>
-                                                </td>
                                                 <td className="px-6 py-4">
-                                                    {u.role === 'student' ? (
-                                                        <div className="flex items-center gap-3 relative">
-                                                            <span className="font-bold text-accent">{u.credits_remaining || 0}</span>
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                className="h-7 px-2 text-[10px] rounded-lg"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setShowAdjustCreditsModal(showAdjustCreditsModal === u.id ? null : u.id);
-                                                                }}
+                                                    <div className="flex items-center gap-3 relative">
+                                                        <span className="font-bold text-accent">{u.credits_remaining || 0}</span>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-7 px-2 text-[10px] rounded-lg"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setShowAdjustCreditsModal(showAdjustCreditsModal === u.id ? null : u.id);
+                                                            }}
+                                                        >
+                                                            Adjust
+                                                        </Button>
+                                                        {showAdjustCreditsModal === u.id && (
+                                                            <motion.div
+                                                                initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                                                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                                className="absolute left-0 top-full mt-2 z-50 bg-white border border-border p-4 rounded-2xl shadow-2xl flex flex-col gap-3 min-w-[160px]"
                                                             >
-                                                                Adjust
-                                                            </Button>
-                                                            {showAdjustCreditsModal === u.id && (
-                                                                <motion.div
-                                                                    initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                                                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                                    className="absolute left-0 top-full mt-2 z-50 bg-white border border-border p-4 rounded-2xl shadow-2xl flex flex-col gap-3 min-w-[160px]"
-                                                                >
-                                                                    <p className="text-[10px] font-bold uppercase text-muted-foreground">Quick Adjust</p>
-                                                                    <div className="flex gap-2">
-                                                                        <Button size="sm" variant="accent" className="flex-1" onClick={() => adjustStudentCredits(u.id, 1)}>+1</Button>
-                                                                        <Button size="sm" variant="secondary" className="flex-1" onClick={() => adjustStudentCredits(u.id, -1)}>-1</Button>
-                                                                    </div>
-                                                                    <div className="h-px bg-border" />
-                                                                    <Button size="sm" variant="ghost" className="w-full text-xs" onClick={() => setShowAdjustCreditsModal(null)}>Close</Button>
-                                                                </motion.div>
-                                                            )}
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-xs text-muted-foreground">N/A</span>
-                                                    )}
+                                                                <p className="text-[10px] font-bold uppercase text-muted-foreground">Quick Adjust</p>
+                                                                <div className="flex gap-2">
+                                                                    <Button size="sm" variant="accent" className="flex-1" onClick={() => adjustStudentCredits(u.id, 1)}>+1</Button>
+                                                                    <Button size="sm" variant="secondary" className="flex-1" onClick={() => adjustStudentCredits(u.id, -1)}>-1</Button>
+                                                                </div>
+                                                                <div className="h-px bg-border" />
+                                                                <Button size="sm" variant="ghost" className="w-full text-xs" onClick={() => setShowAdjustCreditsModal(null)}>Close</Button>
+                                                            </motion.div>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right space-x-2">
-                                                    <Button variant="ghost" size="sm" className="text-accent underline" onClick={() => alert('Editing coming soon!')}>Edit</Button>
+                                                    <Button variant="ghost" size="sm" className="text-accent underline" onClick={() => openEditUser(u)}>Edit</Button>
                                                     <Button variant="ghost" size="sm" className="text-red-500 underline" onClick={() => deleteUser(u.id)}>Delete</Button>
                                                 </td>
                                             </tr>
@@ -774,9 +1238,17 @@ export default function AdminDashboard() {
                                     </thead>
                                     <tbody className="divide-y divide-border/50">
                                         {allBookings.map(b => {
-                                            const student = allUsers.find(u => u.id === b.student_id);
-                                            const instructor = allUsers.find(u => u.id === b.instructor_id);
-                                            const lesson = lessons.find(l => l.id === b.lesson_id);
+                                            const student = allUsers.find((u: any) => u.id === b.student_id);
+                                            const instructor = instructors.find((inst: any) => inst.id === b.instructor_id);
+                                            const lesson = lessons.find((l: any) => l.id === b.lesson_id);
+                                            // Count siblings in same bundle
+                                            const bundleSiblings = b.bundle_id
+                                                ? allBookings.filter((x: any) => x.bundle_id === b.bundle_id)
+                                                : []
+                                            const bundleIndex = b.bundle_id
+                                                ? bundleSiblings.sort((a: any, x: any) => new Date(a.start_time).getTime() - new Date(x.start_time).getTime()).findIndex((x: any) => x.id === b.id) + 1
+                                                : 0
+                                            const shortBundleId = b.bundle_id ? b.bundle_id.slice(0, 6).toUpperCase() : null
                                             return (
                                             <tr key={b.id} className="hover:bg-muted/30 transition-colors">
                                                 <td className="px-6 py-4">
@@ -784,21 +1256,37 @@ export default function AdminDashboard() {
                                                     <p className="text-xs text-muted-foreground">{student?.email || 'No email'}</p>
                                                 </td>
                                                 <td className="px-6 py-4 text-sm">{instructor?.full_name || 'Unknown'}</td>
-                                                <td className="px-6 py-4 text-sm font-medium">{lesson?.title || 'Custom'}</td>
+                                                <td className="px-6 py-4 text-sm font-medium">
+                                                    {lesson?.title || 'Custom'}
+                                                    {b.bundle_id && (
+                                                        <div className="flex items-center gap-1.5 mt-1">
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded-full uppercase tracking-wide">
+                                                                Bundle #{shortBundleId} · {bundleIndex}/{bundleSiblings.length}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </td>
                                                 <td className="px-6 py-4">
                                                     <p className="text-sm">{new Date(b.start_time).toLocaleDateString()}</p>
                                                     <p className="text-xs text-muted-foreground">{new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${b.status === 'scheduled' ? 'bg-blue-100 text-blue-700' :
+                                                <td className="px-6 py-4 space-y-1">
+                                                    <span className={`inline-block px-2 py-1 rounded-full text-[10px] font-bold uppercase ${b.status === 'scheduled' ? 'bg-blue-100 text-blue-700' :
                                                             b.status === 'completed' ? 'bg-green-100 text-green-700' :
                                                                 'bg-red-100 text-red-700'
                                                         }`}>
                                                         {b.status}
                                                     </span>
+                                                    <span className={`inline-block ml-1 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                                                        b.payment_status === 'paid' ? 'bg-green-100 text-green-700' :
+                                                        b.payment_status === 'pay_in_person' ? 'bg-amber-100 text-amber-700' :
+                                                        'bg-gray-100 text-gray-500'
+                                                    }`}>
+                                                        {b.payment_status === 'pay_in_person' ? 'Pay on day' : b.payment_status || 'pending'}
+                                                    </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
-                                                    <Button variant="ghost" size="sm" className="text-accent underline" onClick={() => alert('Editing coming soon!')}>Edit</Button>
+                                                    <Button variant="ghost" size="sm" className="text-accent" onClick={() => openEditBooking(b)}>Edit</Button>
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
@@ -816,63 +1304,6 @@ export default function AdminDashboard() {
                         </>
                     )}
 
-                    {activeTab === 'packages' && (
-                        <>
-                            <div className="flex justify-between items-center text-sm">
-                                <h2 className="text-2xl font-bold font-outfit">Package Purchase History</h2>
-                                <div className="flex gap-2">
-                                    <div className="p-3 bg-accent/10 rounded-2xl">
-                                        <p className="text-[10px] font-bold text-accent uppercase tracking-widest">Total Volume</p>
-                                        <p className="text-xl font-bold">${packagePurchases.reduce((acc, p) => acc + (p.amount || 0), 0).toLocaleString()}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="bg-card border border-border rounded-[2.5rem] overflow-hidden shadow-sm">
-                                <table className="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr className="bg-muted/50 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                                            <th className="px-6 py-5">Student</th>
-                                            <th className="px-6 py-5">Package</th>
-                                            <th className="px-6 py-5">Amount</th>
-                                            <th className="px-6 py-5">Date</th>
-                                            <th className="px-6 py-5 text-right">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-border/50">
-                                        {packagePurchases.map(purchase => (
-                                            <tr key={purchase.id} className="hover:bg-muted/30 transition-colors">
-                                                <td className="px-6 py-4 font-medium text-sm">
-                                                    {purchase.student?.full_name || 'Deleted User'}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="px-2 py-1 bg-primary/5 text-primary text-[10px] font-bold rounded uppercase">
-                                                        {purchase.package_type}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 font-bold text-sm">${purchase.amount}</td>
-                                                <td className="px-6 py-4 text-sm text-muted-foreground">
-                                                    {new Date(purchase.created_at).toLocaleDateString()}
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <span className="text-green-600 font-bold text-[10px] uppercase flex items-center justify-end gap-1">
-                                                        <CheckCircle className="w-3 h-3" /> Fulfilled
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {packagePurchases.length === 0 && (
-                                            <tr>
-                                                <td colSpan={5} className="p-12 text-center text-muted-foreground italic">
-                                                    No package purchases found.
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </>
-                    )}
 
                     {activeTab === 'payments' && (
                         <>
@@ -921,6 +1352,297 @@ export default function AdminDashboard() {
                                 </table>
                             </div>
                         </>
+                    )}
+
+                    {activeTab === 'instructors' && (
+                        <div className="space-y-6">
+                            {!selectedInstructor ? (
+                                <>
+                                    <div className="flex justify-between items-center">
+                                        <h2 className="text-2xl font-bold font-outfit">Instructors</h2>
+                                        <Button size="sm" className="rounded-xl gap-2" onClick={() => setShowNewInstructorModal(true)}>
+                                            <Plus className="w-4 h-4" /> New Instructor
+                                        </Button>
+                                    </div>
+
+                                    {showNewInstructorModal && (
+                                        <div className="bg-muted/30 p-6 rounded-2xl border border-border space-y-4">
+                                            <h3 className="font-bold">Add New Instructor</h3>
+                                            <form onSubmit={handleCreateInstructor} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Name *</label>
+                                                    <input required value={newInstructorForm.full_name} onChange={e => setNewInstructorForm(f => ({ ...f, full_name: e.target.value }))}
+                                                        placeholder="e.g. John Smith" className="w-full bg-background border border-border p-2 rounded-lg" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Email</label>
+                                                    <input type="email" value={newInstructorForm.email} onChange={e => setNewInstructorForm(f => ({ ...f, email: e.target.value }))}
+                                                        placeholder="john@example.com" className="w-full bg-background border border-border p-2 rounded-lg" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone</label>
+                                                    <input value={newInstructorForm.phone} onChange={e => setNewInstructorForm(f => ({ ...f, phone: e.target.value }))}
+                                                        placeholder="04xx xxx xxx" className="w-full bg-background border border-border p-2 rounded-lg" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Experience (years)</label>
+                                                    <input type="number" min="0" value={newInstructorForm.experience_years} onChange={e => setNewInstructorForm(f => ({ ...f, experience_years: e.target.value }))}
+                                                        placeholder="5" className="w-full bg-background border border-border p-2 rounded-lg" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Car Model</label>
+                                                    <input value={newInstructorForm.car_model} onChange={e => setNewInstructorForm(f => ({ ...f, car_model: e.target.value }))}
+                                                        placeholder="Toyota Corolla" className="w-full bg-background border border-border p-2 rounded-lg" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Languages (comma-separated)</label>
+                                                    <input value={newInstructorForm.languages} onChange={e => setNewInstructorForm(f => ({ ...f, languages: e.target.value }))}
+                                                        placeholder="English, Mandarin" className="w-full bg-background border border-border p-2 rounded-lg" />
+                                                </div>
+                                                <div className="md:col-span-2 space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Bio</label>
+                                                    <textarea rows={2} value={newInstructorForm.bio} onChange={e => setNewInstructorForm(f => ({ ...f, bio: e.target.value }))}
+                                                        placeholder="Brief instructor bio..." className="w-full bg-background border border-border p-2 rounded-lg resize-none" />
+                                                </div>
+                                                <div className="md:col-span-2 flex justify-end gap-2">
+                                                    <Button type="button" variant="ghost" onClick={() => setShowNewInstructorModal(false)}>Cancel</Button>
+                                                    <Button type="submit">Create Instructor</Button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    )}
+
+                                    <div className="bg-card border border-border rounded-[2.5rem] overflow-hidden shadow-sm">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="bg-muted/50 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                                    <th className="px-6 py-5">Name</th>
+                                                    <th className="px-6 py-5">Phone</th>
+                                                    <th className="px-6 py-5">Experience</th>
+                                                    <th className="px-6 py-5">Car</th>
+                                                    <th className="px-6 py-5">Rating</th>
+                                                    <th className="px-6 py-5 text-right">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border/50">
+                                                {instructors.map((inst: any) => (
+                                                    <tr key={inst.id} className="hover:bg-muted/30 transition-colors">
+                                                        <td className="px-6 py-4">
+                                                            <p className="font-medium text-sm">{inst.full_name}</p>
+                                                            <p className="text-xs text-muted-foreground truncate max-w-[180px]">{inst.email || inst.bio || '—'}</p>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-sm">{inst.phone || '—'}</td>
+                                                        <td className="px-6 py-4 text-sm">{inst.experience_years ? `${inst.experience_years} yrs` : '—'}</td>
+                                                        <td className="px-6 py-4 text-sm">{inst.car_model || '—'}</td>
+                                                        <td className="px-6 py-4">
+                                                            <span className="flex items-center gap-1 text-sm font-bold text-amber-500">
+                                                                <Star className="w-3.5 h-3.5 fill-amber-400 stroke-amber-500" />
+                                                                {inst.rating ?? '5.0'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                                            <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => selectInstructor(inst)}>
+                                                                <Edit2 className="w-3.5 h-3.5" /> Manage
+                                                            </Button>
+                                                            <Button size="sm" variant="ghost" className="text-red-500 rounded-xl" onClick={() => handleDeleteInstructor(inst.id)}>
+                                                                Delete
+                                                            </Button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {instructors.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={6} className="p-12 text-center text-muted-foreground italic">No instructors yet. Click &quot;New Instructor&quot; to add one.</td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-4">
+                                            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setSelectedInstructor(null)}>
+                                                ← Back
+                                            </Button>
+                                            <h2 className="text-2xl font-bold font-outfit">{selectedInstructor.full_name}</h2>
+                                        </div>
+                                        <Button variant="ghost" size="sm" className="text-red-500 rounded-xl" onClick={() => handleDeleteInstructor(selectedInstructor.id)}>
+                                            Delete Instructor
+                                        </Button>
+                                    </div>
+
+                                    {/* Profile Details Form */}
+                                    <div className="bg-card border border-border rounded-[2.5rem] p-8 shadow-sm space-y-6">
+                                        <h3 className="text-lg font-bold font-outfit flex items-center gap-2">
+                                            <UserCheck className="w-5 h-5 text-accent" /> Profile Details
+                                        </h3>
+                                        <form onSubmit={handleSaveInstructor} className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Name</label>
+                                                <input value={instructorForm.full_name} onChange={e => setInstructorForm(f => ({ ...f, full_name: e.target.value }))}
+                                                    className="w-full bg-muted/50 border border-border p-2.5 rounded-xl" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Email</label>
+                                                <input type="email" value={instructorForm.email} onChange={e => setInstructorForm(f => ({ ...f, email: e.target.value }))}
+                                                    className="w-full bg-muted/50 border border-border p-2.5 rounded-xl" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone</label>
+                                                <input value={instructorForm.phone} onChange={e => setInstructorForm(f => ({ ...f, phone: e.target.value }))}
+                                                    className="w-full bg-muted/50 border border-border p-2.5 rounded-xl" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Experience (years)</label>
+                                                <input type="number" min="0" value={instructorForm.experience_years} onChange={e => setInstructorForm(f => ({ ...f, experience_years: e.target.value }))}
+                                                    className="w-full bg-muted/50 border border-border p-2.5 rounded-xl" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1"><Car className="w-3.5 h-3.5" /> Car Model</label>
+                                                <input value={instructorForm.car_model} onChange={e => setInstructorForm(f => ({ ...f, car_model: e.target.value }))}
+                                                    placeholder="e.g. Toyota Corolla" className="w-full bg-muted/50 border border-border p-2.5 rounded-xl" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Languages (comma-separated)</label>
+                                                <input value={instructorForm.languages} onChange={e => setInstructorForm(f => ({ ...f, languages: e.target.value }))}
+                                                    placeholder="English, Mandarin" className="w-full bg-muted/50 border border-border p-2.5 rounded-xl" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1"><Star className="w-3.5 h-3.5" /> Rating (1–5)</label>
+                                                <input type="number" min="1" max="5" step="0.1" value={instructorForm.rating} onChange={e => setInstructorForm(f => ({ ...f, rating: e.target.value }))}
+                                                    className="w-full bg-muted/50 border border-border p-2.5 rounded-xl" />
+                                            </div>
+                                            <div className="md:col-span-2 space-y-1">
+                                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Bio</label>
+                                                <textarea rows={3} value={instructorForm.bio} onChange={e => setInstructorForm(f => ({ ...f, bio: e.target.value }))}
+                                                    className="w-full bg-muted/50 border border-border p-2.5 rounded-xl resize-none" />
+                                            </div>
+                                            <div className="md:col-span-2 flex justify-end">
+                                                <Button type="submit" className="rounded-xl gap-2">Save Details</Button>
+                                            </div>
+                                        </form>
+                                    </div>
+
+                                    {/* Availability Calendar */}
+                                    <div className="bg-card border border-border rounded-[2.5rem] p-8 shadow-sm space-y-5">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div>
+                                                <h3 className="text-lg font-bold font-outfit flex items-center gap-2">
+                                                    <Clock className="w-5 h-5 text-accent" /> Availability Schedule
+                                                </h3>
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    Drag to add a slot · Click a slot to remove it · Recurring weekly
+                                                </p>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-3 text-xs shrink-0">
+                                                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-green-400 inline-block" /> Available</span>
+                                                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-300 inline-block" /> Disabled</span>
+                                                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" /> Paid booking</span>
+                                                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-orange-500 inline-block" /> Pay on day</span>
+                                                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-violet-500 inline-block" /> Pending</span>
+                                            </div>
+                                        </div>
+
+                                        {availabilityLoading ? (
+                                            <div className="flex items-center justify-center py-16 gap-3 text-muted-foreground">
+                                                <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                                                <span className="text-sm">Loading schedule...</span>
+                                            </div>
+                                        ) : (
+                                            <div className="rounded-2xl overflow-hidden border border-border">
+                                                <FullCalendar
+                                                    plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
+                                                    initialView="timeGridWeek"
+                                                    headerToolbar={{
+                                                        left: 'prev,next today',
+                                                        center: 'title',
+                                                        right: 'timeGridWeek,dayGridMonth',
+                                                    }}
+                                                    dayHeaderFormat={{ day: '2-digit', month: '2-digit', omitCommas: true }}
+                                                    titleFormat={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
+                                                    allDaySlot={false}
+                                                    slotMinTime="00:00:00"
+                                                    slotMaxTime="24:00:00"
+                                                    height="auto"
+                                                    selectable={true}
+                                                    selectMirror={true}
+                                                    select={handleCalendarSelect}
+                                                    eventClick={(info) => {
+                                                        if (info.event.extendedProps.type === 'booking') return
+                                                        if (confirm(`Remove this slot (${info.event.title})?`)) {
+                                                            handleDeleteSlot(info.event.id)
+                                                        }
+                                                    }}
+                                                    events={[
+                                                        // Recurring availability slots
+                                                        ...instructorAvailability.map(slot => ({
+                                                            id: slot.id,
+                                                            title: `${slot.start_time.slice(0, 5)} – ${slot.end_time.slice(0, 5)}`,
+                                                            daysOfWeek: [slot.day_of_week],
+                                                            startTime: slot.start_time.slice(0, 5),
+                                                            endTime: slot.end_time.slice(0, 5),
+                                                            backgroundColor: slot.is_active ? '#22c55e' : '#d1d5db',
+                                                            borderColor: slot.is_active ? '#16a34a' : '#9ca3af',
+                                                            textColor: slot.is_active ? '#fff' : '#6b7280',
+                                                            extendedProps: { type: 'availability', is_active: slot.is_active },
+                                                        })),
+                                                        // Actual bookings for this instructor
+                                                        ...allBookings
+                                                            .filter(b => b.instructor_id === selectedInstructor?.id && b.status !== 'cancelled')
+                                                            .map(b => {
+                                                                const student = allUsers.find((u: any) => u.id === b.student_id)
+                                                                const lesson = lessons.find((l: any) => l.id === b.lesson_id)
+                                                                return {
+                                                                    id: `booking-${b.id}`,
+                                                                    title: student?.full_name || 'Booked',
+                                                                    start: b.start_time,
+                                                                    end: b.end_time,
+                                                                    backgroundColor: b.payment_status === 'paid' ? '#3b82f6' : b.payment_status === 'pay_in_person' ? '#f97316' : '#8b5cf6',
+                                                                    borderColor: b.payment_status === 'paid' ? '#2563eb' : b.payment_status === 'pay_in_person' ? '#ea580c' : '#7c3aed',
+                                                                    textColor: '#fff',
+                                                                    extendedProps: { type: 'booking', student: student?.full_name, lesson: lesson?.title, status: b.status, payment: b.payment_status },
+                                                                }
+                                                            }),
+                                                    ]}
+                                                    eventContent={(arg) => {
+                                                        if (arg.event.extendedProps.type === 'booking') {
+                                                            return (
+                                                                <div className="px-1.5 py-1 h-full overflow-hidden">
+                                                                    <div className="text-[11px] font-bold leading-tight truncate">📚 {arg.event.extendedProps.student}</div>
+                                                                    <div className="text-[10px] opacity-90 truncate">{arg.event.extendedProps.lesson}</div>
+                                                                    <div className="text-[10px] opacity-80 capitalize">{arg.event.extendedProps.payment === 'pay_in_person' ? 'Pay on day' : arg.event.extendedProps.payment}</div>
+                                                                </div>
+                                                            )
+                                                        }
+                                                        return (
+                                                            <div className="px-1.5 py-1 h-full overflow-hidden">
+                                                                <div className="text-[11px] font-bold leading-tight">{arg.event.title}</div>
+                                                                <div className="text-[10px] opacity-80">{arg.event.extendedProps.is_active ? 'Available' : 'Disabled'}</div>
+                                                            </div>
+                                                        )
+                                                    }}
+                                                    slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: true }}
+                                                    nowIndicator={true}
+                                                    businessHours={instructorAvailability
+                                                        .filter(s => s.is_active)
+                                                        .map(s => ({
+                                                            daysOfWeek: [s.day_of_week],
+                                                            startTime: s.start_time.slice(0, 5),
+                                                            endTime: s.end_time.slice(0, 5),
+                                                        }))}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === 'reports' && (
+                        <ReportsTab />
                     )}
 
                     {activeTab === 'settings' && (
@@ -983,6 +1705,7 @@ export default function AdminDashboard() {
                                 </div>
                             </div>
 
+                            {/* Reports quick link from settings */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="p-6 bg-card rounded-3xl border border-border shadow-sm">
                                     <p className="font-bold text-lg mb-1">Maintenance Mode</p>
@@ -1008,167 +1731,636 @@ export default function AdminDashboard() {
                     )}
                 </div>
 
-                {/* Sidebar: System Alerts & Quick Actions */}
-                <div className="space-y-8">
-                    <div className="bg-card border border-border rounded-[2.5rem] p-8 shadow-sm space-y-6">
-                        <h3 className="font-bold text-lg font-outfit flex items-center gap-2">
-                            <AlertCircle className="w-5 h-5 text-orange-500" /> System Alerts
-                        </h3>
-                        <div className="space-y-4">
-                            {inquiries.filter(i => i.status === 'new').map(inq => (
-                                <div key={inq.id} className="p-4 bg-orange-50 border border-orange-100 rounded-2xl flex gap-3">
-                                    <Users className="w-5 h-5 text-orange-500 shrink-0" />
-                                    <div className="space-y-1">
-                                        <p className="text-sm font-bold text-orange-800">New Inquiry: {inq.full_name}</p>
-                                        <p className="text-xs text-orange-700/70">{inq.interest || inq.message?.slice(0, 50)}</p>
-                                        <button className="text-xs font-bold text-orange-800 underline">Contact Now</button>
-                                    </div>
-                                </div>
-                            ))}
-                            {inquiries.filter(i => i.status === 'new').length === 0 && (
-                                <p className="text-xs text-muted-foreground italic text-center py-4">No new inquiries.</p>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="bg-primary rounded-[2.5rem] p-8 text-primary-foreground space-y-6 shadow-2xl">
-                        <h3 className="text-xl font-bold font-outfit">Global Settings</h3>
-                        <div className="space-y-3">
-                            <button
-                                onClick={() => setShowManualBookingModal(true)}
-                                className="w-full p-4 bg-white/10 hover:bg-white/20 rounded-2xl transition-all text-left flex justify-between items-center group"
-                            >
-                                <span className="text-sm font-bold">Manual Booking</span>
-                                <Plus className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-all" />
-                            </button>
-                            <button className="w-full p-4 bg-white/10 hover:bg-white/20 rounded-2xl transition-all text-left flex justify-between items-center group">
-                                <span className="text-sm font-bold">Lesson Pricing</span>
-                                <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-all" />
-                            </button>
-                            <button className="w-full p-4 bg-white/10 hover:bg-white/20 rounded-2xl transition-all text-left flex justify-between items-center group">
-                                <span className="text-sm font-bold">Package Bundles</span>
-                                <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-all" />
-                            </button>
-                            <button className="w-full p-4 bg-white/10 hover:bg-white/20 rounded-2xl transition-all text-left flex justify-between items-center group">
-                                <span className="text-sm font-bold">Email Templates</span>
-                                <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-all" />
-                            </button>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             {/* Manual Booking Modal */}
+            {/* Edit Lesson Modal */}
+            {editingLesson && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-card border border-border w-full max-w-xl rounded-[2.5rem] shadow-2xl p-10 space-y-8 max-h-[90vh] overflow-y-auto"
+                    >
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h2 className="text-2xl font-bold font-outfit">Edit Lesson</h2>
+                                <p className="text-sm text-muted-foreground mt-1">{editingLesson.title}</p>
+                            </div>
+                            <button onClick={() => setEditingLesson(null)} className="p-2 hover:bg-muted rounded-full">
+                                <XCircle className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        {lessonEditError && (
+                            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 shrink-0" /> {lessonEditError}
+                            </div>
+                        )}
+
+                        <form onSubmit={handleSaveLesson} className="space-y-5">
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Title</label>
+                                <input
+                                    required
+                                    value={lessonEditForm.title}
+                                    onChange={e => setLessonEditForm(f => ({ ...f, title: e.target.value }))}
+                                    className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description</label>
+                                <textarea
+                                    rows={2}
+                                    value={lessonEditForm.description}
+                                    onChange={e => setLessonEditForm(f => ({ ...f, description: e.target.value }))}
+                                    className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20 resize-none"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Price ($)</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        required
+                                        value={lessonEditForm.price}
+                                        onChange={e => setLessonEditForm(f => ({ ...f, price: e.target.value }))}
+                                        className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Duration (mins)</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        required
+                                        value={lessonEditForm.duration_minutes}
+                                        onChange={e => setLessonEditForm(f => ({ ...f, duration_minutes: e.target.value }))}
+                                        className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Package toggle */}
+                            <div className="flex items-center gap-3 p-4 bg-muted/50 border border-border rounded-xl">
+                                <input
+                                    id="edit_is_package"
+                                    type="checkbox"
+                                    checked={lessonEditForm.is_package}
+                                    onChange={e => setLessonEditForm(f => ({ ...f, is_package: e.target.checked, lesson_count: e.target.checked ? f.lesson_count : '1' }))}
+                                    className="w-4 h-4 accent-accent cursor-pointer"
+                                />
+                                <label htmlFor="edit_is_package" className="text-sm font-bold cursor-pointer select-none">
+                                    Package bundle (multiple lessons)
+                                </label>
+                            </div>
+
+                            {lessonEditForm.is_package && (
+                                <div className="p-4 bg-accent/5 border border-accent/20 rounded-xl space-y-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Number of Lessons in Package</label>
+                                    <input
+                                        type="number"
+                                        min="2"
+                                        required={lessonEditForm.is_package}
+                                        value={lessonEditForm.lesson_count}
+                                        onChange={e => setLessonEditForm(f => ({ ...f, lesson_count: e.target.value }))}
+                                        className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    />
+                                    {lessonEditForm.duration_minutes && lessonEditForm.lesson_count && (
+                                        (() => {
+                                            const d = parseInt(lessonEditForm.duration_minutes)
+                                            const c = parseInt(lessonEditForm.lesson_count)
+                                            const valid = c >= 2 && d % c === 0
+                                            return (
+                                                <p className={`text-xs font-medium ${valid ? 'text-green-600' : 'text-amber-600'}`}>
+                                                    {valid
+                                                        ? `✓ ${d / c} mins per session`
+                                                        : `${d} ÷ ${c} = ${(d / c).toFixed(2)} — must be a whole number`}
+                                                </p>
+                                            )
+                                        })()
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Active toggle */}
+                            <div className="flex items-center gap-3 p-4 bg-muted/50 border border-border rounded-xl">
+                                <input
+                                    id="edit_is_active"
+                                    type="checkbox"
+                                    checked={lessonEditForm.is_active}
+                                    onChange={e => setLessonEditForm(f => ({ ...f, is_active: e.target.checked }))}
+                                    className="w-4 h-4 accent-accent cursor-pointer"
+                                />
+                                <label htmlFor="edit_is_active" className="text-sm font-bold cursor-pointer select-none">
+                                    Active (visible to students)
+                                </label>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <Button type="button" variant="ghost" onClick={() => setEditingLesson(null)}>Cancel</Button>
+                                <Button type="submit" isLoading={lessonEditLoading}>Save Changes</Button>
+                            </div>
+                        </form>
+                    </motion.div>
+                </div>
+            )}
+
+            {/* Edit Booking Modal */}
+            {editingBooking && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-card border border-border w-full max-w-2xl rounded-[2.5rem] shadow-2xl p-10 space-y-8 max-h-[90vh] overflow-y-auto"
+                    >
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h2 className="text-2xl font-bold font-outfit">Edit Booking</h2>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    {allUsers.find((u: any) => u.id === editingBooking.student_id)?.full_name || 'Unknown Student'}
+                                </p>
+                            </div>
+                            <button onClick={() => setEditingBooking(null)} className="p-2 hover:bg-muted rounded-full">
+                                <XCircle className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        {bookingEditError && (
+                            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 shrink-0" /> {bookingEditError}
+                            </div>
+                        )}
+
+                        <form onSubmit={handleSaveBookingEdit} className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Instructor */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Instructor</label>
+                                    <select
+                                        value={bookingEditForm.instructorId}
+                                        onChange={e => setBookingEditForm(f => ({ ...f, instructorId: e.target.value, time: '' }))}
+                                        required
+                                        className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    >
+                                        <option value="">Select instructor</option>
+                                        {instructors.map((inst: any) => (
+                                            <option key={inst.id} value={inst.id}>{inst.full_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Lesson */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Lesson</label>
+                                    <select
+                                        value={bookingEditForm.lessonId}
+                                        onChange={e => setBookingEditForm(f => ({ ...f, lessonId: e.target.value, time: '' }))}
+                                        required
+                                        className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    >
+                                        <option value="">Select lesson</option>
+                                        {lessons.map((l: any) => (
+                                            <option key={l.id} value={l.id}>{l.title} — ${l.price}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Date */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Date</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        value={bookingEditForm.date}
+                                        onChange={e => setBookingEditForm(f => ({ ...f, date: e.target.value, time: '' }))}
+                                        className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    />
+                                </div>
+
+                                {/* Time — slot picker */}
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                        Available Times
+                                        {bookingEditForm.date && bookingEditForm.instructorId && (
+                                            <span className="ml-2 normal-case font-normal text-muted-foreground/70">
+                                                — {new Date(bookingEditForm.date + 'T00:00:00').toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}
+                                            </span>
+                                        )}
+                                    </label>
+                                    {!bookingEditForm.instructorId || !bookingEditForm.date ? (
+                                        <p className="text-xs text-muted-foreground italic">Select an instructor and date to see available times.</p>
+                                    ) : slotsLoading ? (
+                                        <div className="flex items-center gap-2 py-2">
+                                            <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                                            <span className="text-xs text-muted-foreground">Loading available times…</span>
+                                        </div>
+                                    ) : slotsMessage ? (
+                                        <p className="text-xs text-amber-600 font-medium">{slotsMessage}</p>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-2">
+                                            {availableSlots.map(slot => (
+                                                <button
+                                                    key={slot.value}
+                                                    type="button"
+                                                    onClick={() => setBookingEditForm(f => ({ ...f, time: slot.value }))}
+                                                    className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-all ${
+                                                        bookingEditForm.time === slot.value
+                                                            ? 'bg-accent text-white border-accent shadow-sm'
+                                                            : 'bg-muted border-border hover:border-accent/50 text-foreground'
+                                                    }`}
+                                                >
+                                                    {slot.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {/* Keep a hidden required input so form validation still works */}
+                                    <input type="hidden" name="time" value={bookingEditForm.time} required />
+                                </div>
+
+                                {/* Status */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Booking Status</label>
+                                    <select
+                                        value={bookingEditForm.status}
+                                        onChange={e => setBookingEditForm(f => ({ ...f, status: e.target.value }))}
+                                        className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    >
+                                        <option value="scheduled">Scheduled</option>
+                                        <option value="completed">Completed</option>
+                                        <option value="cancelled">Cancelled</option>
+                                        <option value="rescheduled">Rescheduled</option>
+                                    </select>
+                                </div>
+
+                                {/* Payment Status */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Payment Status</label>
+                                    <select
+                                        value={bookingEditForm.paymentStatus}
+                                        onChange={e => setBookingEditForm(f => ({ ...f, paymentStatus: e.target.value }))}
+                                        className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    >
+                                        <option value="pending">Pending</option>
+                                        <option value="paid">Paid</option>
+                                        <option value="pay_in_person">Pay on Day</option>
+                                        <option value="failed">Failed</option>
+                                        <option value="refunded">Refunded</option>
+                                    </select>
+                                </div>
+
+                                {/* Vehicle Type */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Vehicle Type</label>
+                                    <select
+                                        value={bookingEditForm.vehicleType}
+                                        onChange={e => setBookingEditForm(f => ({ ...f, vehicleType: e.target.value }))}
+                                        className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    >
+                                        <option value="car">Car</option>
+                                        <option value="truck">Truck</option>
+                                    </select>
+                                </div>
+
+                                {/* Transmission */}
+                                {bookingEditForm.vehicleType === 'car' && (
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Transmission</label>
+                                        <select
+                                            value={bookingEditForm.transmissionType}
+                                            onChange={e => setBookingEditForm(f => ({ ...f, transmissionType: e.target.value }))}
+                                            className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                        >
+                                            <option value="auto">Automatic</option>
+                                            <option value="manual">Manual</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                {/* Pickup Address */}
+                                <div className={`space-y-1 ${bookingEditForm.vehicleType === 'car' ? '' : 'md:col-span-2'}`}>
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pickup Address</label>
+                                    <input
+                                        type="text"
+                                        value={bookingEditForm.pickupAddress}
+                                        onChange={e => setBookingEditForm(f => ({ ...f, pickupAddress: e.target.value }))}
+                                        placeholder="Pickup address"
+                                        className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <Button type="button" variant="ghost" onClick={() => setEditingBooking(null)}>Cancel</Button>
+                                <Button type="submit" isLoading={bookingEditLoading} disabled={!bookingEditForm.time}>Save Changes</Button>
+                            </div>
+                        </form>
+                    </motion.div>
+                </div>
+            )}
+
+            {/* Edit User Modal */}
+            {editingUser && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-card border border-border w-full max-w-lg rounded-[2.5rem] shadow-2xl p-10 space-y-8"
+                    >
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h2 className="text-2xl font-bold font-outfit">Edit User</h2>
+                                <p className="text-sm text-muted-foreground mt-1">{editingUser.full_name}</p>
+                            </div>
+                            <button onClick={() => setEditingUser(null)} className="p-2 hover:bg-muted rounded-full">
+                                <XCircle className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        {userFormError && (
+                            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl flex items-center gap-3 text-sm">
+                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                <p>{userFormError}</p>
+                            </div>
+                        )}
+
+                        <div className="space-y-5">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Email</label>
+                                <input
+                                    type="email"
+                                    value={editingUser.email ?? ''}
+                                    readOnly
+                                    className="w-full bg-muted/40 border border-border rounded-xl px-4 py-2.5 text-sm text-muted-foreground cursor-not-allowed"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Name</label>
+                                <input
+                                    type="text"
+                                    value={userForm.full_name}
+                                    onChange={e => setUserForm(f => ({ ...f, full_name: e.target.value }))}
+                                    className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone</label>
+                                    <input
+                                        type="text"
+                                        value={userForm.phone}
+                                        onChange={e => setUserForm(f => ({ ...f, phone: e.target.value }))}
+                                        className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Credits</label>
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        value={userForm.credits_remaining}
+                                        onChange={e => setUserForm(f => ({ ...f, credits_remaining: Number(e.target.value) }))}
+                                        className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Address</label>
+                                <input
+                                    type="text"
+                                    value={userForm.address}
+                                    onChange={e => setUserForm(f => ({ ...f, address: e.target.value }))}
+                                    placeholder="Home address"
+                                    className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Package Expiry</label>
+                                <input
+                                    type="date"
+                                    value={userForm.package_expiry}
+                                    onChange={e => setUserForm(f => ({ ...f, package_expiry: e.target.value }))}
+                                    className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <Button
+                                className="flex-1 rounded-xl"
+                                onClick={saveUserEdit}
+                                isLoading={userFormLoading}
+                            >
+                                Save Changes
+                            </Button>
+                            <Button variant="outline" className="rounded-xl" onClick={() => setEditingUser(null)}>
+                                Cancel
+                            </Button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+
             {showManualBookingModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <motion.div
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="bg-card border border-border w-full max-w-xl rounded-[2.5rem] shadow-2xl p-10 space-y-8 overflow-y-auto max-h-[90vh]"
+                        className="bg-card border border-border w-full max-w-2xl rounded-[2.5rem] shadow-2xl p-10 space-y-8 overflow-y-auto max-h-[90vh]"
                     >
                         <div className="flex justify-between items-center">
                             <h2 className="text-2xl font-bold font-outfit">Manual Lesson Booking</h2>
-                            <button onClick={() => setShowManualBookingModal(false)} className="p-2 hover:bg-muted rounded-full">
+                            <button onClick={() => { setShowManualBookingModal(false); setManualBookingError(null) }} className="p-2 hover:bg-muted rounded-full">
                                 <XCircle className="w-6 h-6" />
                             </button>
                         </div>
 
-                        <form onSubmit={handleManualBooking} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2 col-span-2">
-                                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Student</label>
-                                <select
-                                    required
-                                    className="w-full bg-muted border border-border p-3 rounded-xl outline-none"
-                                    value={bookingData.studentId}
-                                    onChange={(e) => setBookingData({ ...bookingData, studentId: e.target.value })}
-                                >
-                                    <option value="">Select Student</option>
-                                    {allUsers.filter(u => u.role === 'student').map(u => (
-                                        <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>
-                                    ))}
-                                </select>
+                        {manualBookingError && (
+                            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl flex items-center gap-3 text-sm">
+                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                <p>{manualBookingError}</p>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleManualBooking} className="space-y-6">
+
+                            {/* Student — existing or new */}
+                            <div className="space-y-3">
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={() => setManualBookingTab('existing')}
+                                        className={`flex-1 py-2 rounded-xl text-sm font-bold border transition-all ${manualBookingTab === 'existing' ? 'bg-accent text-white border-accent' : 'bg-muted border-border text-muted-foreground'}`}>
+                                        Existing Student
+                                    </button>
+                                    <button type="button" onClick={() => setManualBookingTab('new')}
+                                        className={`flex-1 py-2 rounded-xl text-sm font-bold border transition-all ${manualBookingTab === 'new' ? 'bg-accent text-white border-accent' : 'bg-muted border-border text-muted-foreground'}`}>
+                                        New Student
+                                    </button>
+                                </div>
+
+                                {manualBookingTab === 'existing' ? (
+                                    <select required className="w-full bg-muted border border-border p-3 rounded-xl outline-none text-sm"
+                                        value={bookingData.studentId}
+                                        onChange={e => setBookingData({ ...bookingData, studentId: e.target.value })}>
+                                        <option value="">Select Student</option>
+                                        {allUsers.map((u: any) => (
+                                            <option key={u.id} value={u.id}>{u.full_name}{u.email ? ` (${u.email})` : ''}{u.phone ? ` · ${u.phone}` : ''}</option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Name *</label>
+                                            <input required type="text" placeholder="Jane Smith"
+                                                value={newStudentForm.full_name}
+                                                onChange={e => setNewStudentForm(f => ({ ...f, full_name: e.target.value }))}
+                                                className="w-full bg-muted border border-border p-2.5 rounded-xl text-sm outline-none" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Email</label>
+                                            <input type="email" placeholder="jane@email.com"
+                                                value={newStudentForm.email}
+                                                onChange={e => setNewStudentForm(f => ({ ...f, email: e.target.value }))}
+                                                className="w-full bg-muted border border-border p-2.5 rounded-xl text-sm outline-none" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone</label>
+                                            <input type="text" placeholder="04xx xxx xxx"
+                                                value={newStudentForm.phone}
+                                                onChange={e => setNewStudentForm(f => ({ ...f, phone: e.target.value }))}
+                                                className="w-full bg-muted border border-border p-2.5 rounded-xl text-sm outline-none" />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Instructor</label>
-                                <select
-                                    required
-                                    className="w-full bg-muted border border-border p-3 rounded-xl outline-none"
-                                    value={bookingData.instructorId}
-                                    onChange={(e) => setBookingData({ ...bookingData, instructorId: e.target.value })}
-                                >
-                                    <option value="">Select Instructor</option>
-                                    {allUsers.filter(u => u.role === 'instructor').map(u => (
-                                        <option key={u.id} value={u.id}>{u.full_name}</option>
-                                    ))}
-                                </select>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Instructor</label>
+                                    <select required className="w-full bg-muted border border-border p-3 rounded-xl outline-none text-sm"
+                                        value={bookingData.instructorId}
+                                        onChange={e => setBookingData({ ...bookingData, instructorId: e.target.value, time: '' })}>
+                                        <option value="">Select Instructor</option>
+                                        {instructors.map((inst: any) => (
+                                            <option key={inst.id} value={inst.id}>{inst.full_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Lesson Type</label>
+                                    <select required className="w-full bg-muted border border-border p-3 rounded-xl outline-none text-sm"
+                                        value={bookingData.lessonId}
+                                        onChange={e => setBookingData({ ...bookingData, lessonId: e.target.value, time: '' })}>
+                                        <option value="">Select Lesson</option>
+                                        {lessons.filter(l => l.is_active).map(l => (
+                                            <option key={l.id} value={l.id}>{l.title} — {l.duration_minutes}min · ${l.price}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Date</label>
+                                    <input required type="date"
+                                        className="w-full bg-muted border border-border p-3 rounded-xl outline-none text-sm"
+                                        value={bookingData.date}
+                                        onChange={e => setBookingData({ ...bookingData, date: e.target.value, time: '' })} />
+                                </div>
+
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                        Available Times
+                                        {bookingData.date && bookingData.instructorId && (
+                                            <span className="ml-2 normal-case font-normal text-muted-foreground/70">
+                                                — {new Date(bookingData.date + 'T00:00:00').toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}
+                                            </span>
+                                        )}
+                                    </label>
+                                    {!bookingData.instructorId || !bookingData.date ? (
+                                        <p className="text-xs text-muted-foreground italic">Select an instructor and date to see available times.</p>
+                                    ) : newBookingSlotsLoading ? (
+                                        <div className="flex items-center gap-2 py-2">
+                                            <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                                            <span className="text-xs text-muted-foreground">Loading available times…</span>
+                                        </div>
+                                    ) : newBookingSlotsMessage ? (
+                                        <p className="text-xs text-amber-600 font-medium">{newBookingSlotsMessage}</p>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-2">
+                                            {newBookingSlots.map(slot => (
+                                                <button
+                                                    key={slot.value}
+                                                    type="button"
+                                                    onClick={() => setBookingData({ ...bookingData, time: slot.value })}
+                                                    className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-all ${
+                                                        bookingData.time === slot.value
+                                                            ? 'bg-accent text-white border-accent shadow-sm'
+                                                            : 'bg-muted border-border hover:border-accent/50 text-foreground'
+                                                    }`}
+                                                >
+                                                    {slot.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <input type="hidden" name="time" value={bookingData.time} required />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Vehicle Type</label>
+                                    <select className="w-full bg-muted border border-border p-3 rounded-xl outline-none text-sm"
+                                        value={bookingData.vehicleType}
+                                        onChange={e => setBookingData({ ...bookingData, vehicleType: e.target.value as 'car' | 'truck', transmission: e.target.value === 'truck' ? 'auto' : bookingData.transmission })}>
+                                        <option value="car">🚗 Car</option>
+                                        <option value="truck">🚛 Truck</option>
+                                    </select>
+                                </div>
+
+                                {bookingData.vehicleType === 'car' && (
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Transmission</label>
+                                    <select className="w-full bg-muted border border-border p-3 rounded-xl outline-none text-sm"
+                                        value={bookingData.transmission}
+                                        onChange={e => setBookingData({ ...bookingData, transmission: e.target.value })}>
+                                        <option value="auto">Automatic</option>
+                                        <option value="manual">Manual</option>
+                                    </select>
+                                </div>
+                                )}
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Payment</label>
+                                    <select className="w-full bg-muted border border-border p-3 rounded-xl outline-none text-sm"
+                                        value={bookingData.paymentMethod}
+                                        onChange={e => setBookingData({ ...bookingData, paymentMethod: e.target.value as any })}>
+                                        <option value="pay_in_person">Pay During Class</option>
+                                        <option value="paid">Already Paid</option>
+                                    </select>
+                                </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Lesson Type</label>
-                                <select
-                                    required
-                                    className="w-full bg-muted border border-border p-3 rounded-xl outline-none"
-                                    value={bookingData.lessonId}
-                                    onChange={(e) => setBookingData({ ...bookingData, lessonId: e.target.value })}
-                                >
-                                    <option value="">Select Lesson</option>
-                                    {lessons.map(l => (
-                                        <option key={l.id} value={l.id}>{l.title}</option>
-                                    ))}
-                                </select>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pickup Address</label>
+                                <input type="text" placeholder="Student's pickup location"
+                                    value={bookingData.pickupAddress}
+                                    onChange={e => setBookingData({ ...bookingData, pickupAddress: e.target.value })}
+                                    className="w-full bg-muted border border-border p-3 rounded-xl outline-none text-sm" />
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Date</label>
-                                <input
-                                    type="date"
-                                    required
-                                    className="w-full bg-muted border border-border p-3 rounded-xl outline-none"
-                                    value={bookingData.date}
-                                    onChange={(e) => setBookingData({ ...bookingData, date: e.target.value })}
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Time</label>
-                                <input
-                                    type="time"
-                                    required
-                                    className="w-full bg-muted border border-border p-3 rounded-xl outline-none"
-                                    value={bookingData.time}
-                                    onChange={(e) => setBookingData({ ...bookingData, time: e.target.value })}
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Transmission</label>
-                                <select
-                                    className="w-full bg-muted border border-border p-3 rounded-xl outline-none"
-                                    value={bookingData.transmission}
-                                    onChange={(e) => setBookingData({ ...bookingData, transmission: e.target.value })}
-                                >
-                                    <option value="auto">Automatic</option>
-                                    <option value="manual">Manual</option>
-                                </select>
-                            </div>
-
-                            <div className="flex items-center gap-3 pt-4">
-                                <input
-                                    type="checkbox"
-                                    id="deduct"
-                                    checked={bookingData.deductCredit}
-                                    onChange={(e) => setBookingData({ ...bookingData, deductCredit: e.target.checked })}
-                                    className="w-5 h-5 rounded border-border text-accent focus:ring-accent"
-                                />
+                            <div className="flex items-center gap-3">
+                                <input type="checkbox" id="deduct" checked={bookingData.deductCredit}
+                                    onChange={e => setBookingData({ ...bookingData, deductCredit: e.target.checked })}
+                                    className="w-5 h-5 rounded border-border text-accent focus:ring-accent" />
                                 <label htmlFor="deduct" className="text-sm font-bold">Deduct 1 Credit from Student</label>
                             </div>
 
-                            <div className="col-span-2 pt-6">
-                                <Button type="submit" size="lg" className="w-full rounded-2xl h-14 text-lg">
-                                    Finalize Booking
-                                </Button>
-                            </div>
+                            <Button type="submit" size="lg" className="w-full rounded-2xl h-14 text-lg" isLoading={loading}>
+                                Confirm Booking
+                            </Button>
                         </form>
                     </motion.div>
                 </div>

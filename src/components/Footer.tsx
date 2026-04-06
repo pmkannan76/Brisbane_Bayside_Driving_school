@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Facebook, Instagram, Twitter, Mail, Phone, MapPin, Car } from 'lucide-react'
+import { Mail, Phone, MapPin, Car } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 export const Footer = () => {
@@ -39,15 +39,12 @@ export const Footer = () => {
                         <p className="text-primary-foreground/70 leading-relaxed max-w-xs">
                             Empowering new drivers with confidence and skills for a lifetime of safe driving. Modern lessons for the modern world.
                         </p>
-                        <div className="flex gap-4">
-                            <a href="#" className="p-2 bg-primary-foreground/10 rounded-full hover:bg-secondary hover:text-primary transition-all duration-300">
-                                <Facebook className="w-5 h-5" />
+                        <div className="flex gap-4 items-center">
+                            <a href="https://www.facebook.com/profile.php?id=61577753661994" target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
+                                <img src="/facebook.png" alt="Facebook" className="w-8 h-8 object-contain" />
                             </a>
-                            <a href="#" className="p-2 bg-primary-foreground/10 rounded-full hover:bg-secondary hover:text-primary transition-all duration-300">
-                                <Instagram className="w-5 h-5" />
-                            </a>
-                            <a href="#" className="p-2 bg-primary-foreground/10 rounded-full hover:bg-secondary hover:text-primary transition-all duration-300">
-                                <Twitter className="w-5 h-5" />
+                            <a href="https://www.instagram.com/brisbanebaysidedriving" target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
+                                <img src="/instagram.png" alt="Instagram" className="w-8 h-8 object-contain" />
                             </a>
                         </div>
                     </div>

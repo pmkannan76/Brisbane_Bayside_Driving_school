@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Mail, Lock, LogIn, Chrome, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { supabase } from '@/lib/supabase'
 
 export default function SignInPage() {
     const router = useRouter()
@@ -14,15 +13,16 @@ export default function SignInPage() {
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [redirect, setRedirect] = React.useState('/dashboard')
 
     React.useEffect(() => {
         const searchParams = new URLSearchParams(window.location.search)
         const errorParam = searchParams.get('error')
+        const redirectParam = searchParams.get('redirect')
+        if (redirectParam) setRedirect(redirectParam)
         if (errorParam) {
-            if (errorParam === 'CodeExchangeFailed') {
-                setError('Failed to exchange Google code for a session. Please try again.')
-            } else if (errorParam === 'SessionNotFound') {
-                setError('No valid session found after Google sign-in.')
+            if (errorParam === 'GoogleAuthFailed') {
+                setError('Google sign-in failed. Please try again.')
             } else {
                 setError(errorParam)
             }
@@ -33,35 +33,16 @@ export default function SignInPage() {
         e.preventDefault()
         setLoading(true)
         setError(null)
-
         try {
-            const { data: { session }, error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
+            const res = await fetch('/api/auth/signin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
             })
-
-            if (error) throw error
-
-            if (session) {
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('role, bio')
-                    .eq('id', session.user.id)
-                    .single()
-
-                if (profile?.role === 'instructor') {
-                    if (!profile.bio || profile.bio.trim() === '') {
-                        router.push('/onboarding/instructor')
-                    } else {
-                        router.push('/instructor')
-                    }
-                } else if (profile?.role === 'admin') {
-                    router.push('/admin')
-                } else {
-                    router.push('/dashboard')
-                }
-                router.refresh()
-            }
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed to sign in')
+            router.push(redirect)
+            router.refresh()
         } catch (err: any) {
             setError(err.message || 'Failed to sign in')
         } finally {
@@ -69,18 +50,8 @@ export default function SignInPage() {
         }
     }
 
-    const handleGoogleSignIn = async () => {
-        try {
-            const { error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    redirectTo: `${window.location.origin}/auth/callback`,
-                },
-            })
-            if (error) throw error
-        } catch (err: any) {
-            setError(err.message || 'Failed to sign in with Google')
-        }
+    const handleGoogleSignIn = () => {
+        window.location.href = `/api/auth/google?redirect=${encodeURIComponent(redirect)}`
     }
 
     return (
@@ -141,7 +112,6 @@ export default function SignInPage() {
                         <div className="space-y-2">
                             <div className="flex justify-between items-center px-1">
                                 <label className="text-sm font-bold uppercase tracking-wider text-foreground/60">Password</label>
-                                <Link href="#" className="text-xs font-bold text-accent hover:underline">Forgot?</Link>
                             </div>
                             <div className="relative">
                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
@@ -164,7 +134,7 @@ export default function SignInPage() {
 
                 <div className="text-center pt-4 relative">
                     <p className="text-sm text-muted-foreground">
-                        Don't have an account?{' '}
+                        Don&apos;t have an account?{' '}
                         <Link href="/signup" className="text-accent font-bold hover:underline inline-flex items-center gap-1">
                             Create account <ArrowRight className="w-4 h-4" />
                         </Link>

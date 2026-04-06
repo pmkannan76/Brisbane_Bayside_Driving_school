@@ -1,0 +1,88 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { verifyAdminSession } from '@/lib/adminAuth'
+import { getServiceRoleClient } from '@/lib/supabase'
+
+export async function POST(request: NextRequest) {
+    if (!verifyAdminSession(request)) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { studentId, instructorId, lessonId, date, time, transmission, vehicleType, deductCredit, pickupAddress, paymentMethod, newStudent } = await request.json()
+    const db = getServiceRoleClient()
+
+    // Resolve student — create new user record if needed
+    let resolvedStudentId = studentId
+    if (newStudent?.full_name) {
+        const email = (newStudent.email || `admin-created-${Date.now()}@placeholder.local`).toLowerCase()
+
+        // Check if user already exists by email
+        const { data: existing } = await db.from('users').select('id').eq('email', email).maybeSingle()
+        if (existing) {
+            resolvedStudentId = existing.id
+        } else {
+            const { data: newUser, error: createErr } = await db
+                .from('users')
+                .insert({ email, full_name: newStudent.full_name, phone: newStudent.phone || null })
+                .select('id')
+                .single()
+            if (createErr || !newUser) {
+                return NextResponse.json({ error: 'Failed to create student: ' + createErr?.message }, { status: 500 })
+            }
+            resolvedStudentId = newUser.id
+        }
+    }
+
+    if (!resolvedStudentId) {
+        return NextResponse.json({ error: 'No student selected or provided.' }, { status: 400 })
+    }
+
+    const { data: lesson } = await db.from('lessons').select('duration_minutes, price').eq('id', lessonId).single()
+    if (!lesson) return NextResponse.json({ error: 'Lesson not found.' }, { status: 400 })
+
+    const startTime = new Date(`${date}T${time}`)
+    const endTime = new Date(startTime.getTime() + lesson.duration_minutes * 60000)
+
+    // Double-booking check
+    const { data: conflicts } = await db
+        .from('bookings')
+        .select('id, start_time, end_time')
+        .eq('instructor_id', instructorId)
+        .in('status', ['scheduled'])
+        .lt('start_time', endTime.toISOString())
+        .gt('end_time', startTime.toISOString())
+
+    if (conflicts && conflicts.length > 0) {
+        const clash = conflicts[0]
+        const clashTime = new Date(clash.start_time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })
+        const clashDate = new Date(clash.start_time).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })
+        return NextResponse.json(
+            { error: `Instructor already has a booking on ${clashDate} at ${clashTime}. Please choose a different time.` },
+            { status: 409 }
+        )
+    }
+
+    const { error: bookingError } = await db.from('bookings').insert({
+        student_id: resolvedStudentId,
+        instructor_id: instructorId,
+        lesson_id: lessonId,
+        start_time: startTime.toISOString(),
+        end_time: endTime.toISOString(),
+        status: 'scheduled',
+        payment_status: paymentMethod || 'pay_in_person',
+        pickup_address: pickupAddress || 'Admin booking',
+        vehicle_type: vehicleType || 'car',
+        transmission_type: vehicleType === 'truck' ? null : (transmission || 'auto'),
+        credits_used: deductCredit ? 1 : 0,
+    })
+
+    if (bookingError) return NextResponse.json({ error: bookingError.message }, { status: 500 })
+
+    if (deductCredit) {
+        const { data: userRow } = await db.from('users').select('credits_remaining').eq('id', resolvedStudentId).single()
+        await db.from('users')
+            .update({ credits_remaining: Math.max(0, (userRow?.credits_remaining || 0) - 1) })
+            .eq('id', resolvedStudentId)
+    }
+
+    return NextResponse.json({ success: true }, { status: 201 })
+}

@@ -22,11 +22,11 @@ export default function ProfilePage() {
     useEffect(() => {
         if (profile) {
             setFullName(profile.full_name || '')
-            setBio(profile.bio || '')
-            setExperience(profile.experience_years || 0)
-            setCarModel(profile.car_model || '')
-            setLanguages(profile.languages?.join(', ') || 'English')
-            setAvatarUrl(profile.avatar_url || '')
+            setBio((profile as any).bio || '')
+            setExperience((profile as any).experience_years || 0)
+            setCarModel((profile as any).car_model || '')
+            setLanguages((profile as any).languages?.join(', ') || 'English')
+            setAvatarUrl((profile as any).avatar_url || '')
         }
     }, [profile])
 
@@ -127,8 +127,8 @@ export default function ProfilePage() {
                     <div className="bg-card border border-border rounded-3xl p-6 text-center space-y-4 shadow-sm">
                         <div className="relative inline-block">
                             <div className="w-24 h-24 bg-accent/10 rounded-full flex items-center justify-center overflow-hidden border-2 border-accent/20">
-                                {profile?.avatar_url || avatarUrl ? (
-                                    <img src={avatarUrl || profile?.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                                {(profile as any)?.avatar_url || avatarUrl ? (
+                                    <img src={avatarUrl || (profile as any)?.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                                 ) : (
                                     <User className="w-10 h-10 text-accent" />
                                 )}
@@ -140,7 +140,7 @@ export default function ProfilePage() {
                         </div>
                         <div>
                             <h3 className="font-bold text-lg">{profile?.full_name || 'My Profile'}</h3>
-                            <p className="text-xs text-accent font-bold uppercase tracking-widest">{profile?.role}</p>
+                            <p className="text-xs text-accent font-bold uppercase tracking-widest">{( profile as any)?.role}</p>
                         </div>
                         <div className="pt-4 border-t border-border">
                             <Button variant="ghost" className="w-full justify-start gap-3 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={signOut}>
@@ -225,7 +225,7 @@ export default function ProfilePage() {
                                     </div>
                                 </div>
 
-                                {profile?.role === 'instructor' && (
+                                {( profile as any)?.role === 'instructor' && (
                                     <>
                                         <div className="space-y-2 md:col-span-2">
                                             <label className="text-sm font-bold uppercase tracking-wider text-foreground/60 px-1">Bio / About Me</label>

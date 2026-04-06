@@ -1,17 +1,11 @@
 'use client'
 
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Check, Clock, Shield, Star, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useState, useEffect } from 'react'
-import { loadStripe } from '@stripe/stripe-js'
-import { Elements } from '@stripe/react-stripe-js'
-import CheckoutForm from '@/components/CheckoutForm'
-import { useAuth } from '@/hooks/useAuth'
-
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
 interface LessonItem {
     id: string
@@ -19,6 +13,7 @@ interface LessonItem {
     description: string
     duration_minutes: number
     price: number
+    lesson_count: number
     features: string[]
     isPopular: boolean
     tag: string | null
@@ -26,14 +21,9 @@ interface LessonItem {
 }
 
 export default function LessonsPage() {
-    const { user } = useAuth()
     const [individualLessons, setIndividualLessons] = useState<LessonItem[]>([])
     const [packages, setPackages] = useState<LessonItem[]>([])
     const [loading, setLoading] = useState(true)
-    const [selectedPackage, setSelectedPackage] = useState<LessonItem | null>(null)
-    const [clientSecret, setClientSecret] = useState<string | null>(null)
-    const [isPurchaseComplete, setIsPurchaseComplete] = useState(false)
-    const [isCheckingOut, setIsCheckingOut] = useState(false)
 
     useEffect(() => {
         fetchLessons()
@@ -55,52 +45,16 @@ export default function LessonsPage() {
                     ...lesson,
                     features: lesson.features || [lesson.description || "High-quality instruction"],
                     isPopular: lesson.is_popular || false,
-                    tag: lesson.tag || (lesson.title.includes('Pack') ? 'Value' : null)
+                    tag: lesson.tag || (lesson.is_package ? 'Bundle' : null)
                 }))
 
-                setIndividualLessons(processed.filter(l => !l.title.toLowerCase().includes('pack')))
-                setPackages(processed.filter(l => l.title.toLowerCase().includes('pack')))
+                setIndividualLessons(processed.filter(l => !l.is_package))
+                setPackages(processed.filter(l => l.is_package))
             }
         } catch (err) {
             console.error('Error fetching lessons:', err)
         } finally {
             setLoading(false)
-        }
-    }
-
-    const handlePackagePurchase = async (pkg: LessonItem) => {
-        if (!user) {
-            window.location.href = `/signup?redirect=/lessons`
-            return
-        }
-
-        setSelectedPackage(pkg)
-        setIsCheckingOut(true)
-        setClientSecret(null)
-        setIsPurchaseComplete(false)
-
-        try {
-            const res = await fetch('/api/purchase-package', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ packageId: pkg.id, studentId: user.id })
-            })
-            const data = await res.json()
-
-            if (data.bypassStripe) {
-                setIsPurchaseComplete(true)
-                return
-            } else if (data.clientSecret) {
-                setClientSecret(data.clientSecret)
-            } else if (data.error) {
-                console.error('Stripe initialization failed:', data.error)
-                alert('Payment gateway error. Please try again.')
-                setIsCheckingOut(false)
-            }
-        } catch (err) {
-            console.error('Error initiating package purchase:', err)
-            alert('An unexpected error occurred.')
-            setIsCheckingOut(false)
         }
     }
 
@@ -113,84 +67,6 @@ export default function LessonsPage() {
     }
     return (
         <div className="pb-20 relative">
-            {/* Purchase Modal Overlay */}
-            <AnimatePresence>
-                {isCheckingOut && selectedPackage && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary/40 backdrop-blur-sm"
-                    >
-                        <motion.div
-                            initial={{ scale: 0.9, y: 20 }}
-                            animate={{ scale: 1, y: 0 }}
-                            exit={{ scale: 0.9, y: 20 }}
-                            className="bg-card w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden border border-border"
-                        >
-                            <div className="p-8 md:p-12 space-y-8">
-                                <div className="flex justify-between items-start">
-                                    <div className="space-y-1">
-                                        <h2 className="text-2xl font-bold font-outfit">Complete Purchase</h2>
-                                        <p className="text-muted-foreground text-sm">{selectedPackage.title}</p>
-                                    </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setIsCheckingOut(false)}
-                                        className="rounded-full"
-                                    >
-                                        ✕
-                                    </Button>
-                                </div>
-
-                                {isPurchaseComplete ? (
-                                    <div className="text-center py-10 space-y-6 animate-in fade-in zoom-in">
-                                        <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
-                                            <Check className="w-10 h-10" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <h3 className="text-2xl font-bold font-outfit">Purchase Successful!</h3>
-                                            <p className="text-muted-foreground">Your credits have been added to your account. You can now book your first lesson!</p>
-                                        </div>
-                                        <Link href="/book" className="block">
-                                            <Button size="lg" className="w-full rounded-2xl h-14" onClick={() => setIsCheckingOut(false)}>
-                                                Book Your First Lesson
-                                            </Button>
-                                        </Link>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-6">
-                                        <div className="p-6 bg-muted rounded-2xl flex justify-between items-center">
-                                            <div className="flex items-center gap-3">
-                                                <div className="bg-white p-2 rounded-lg"><Zap className="w-4 h-4 text-accent" /></div>
-                                                <span className="font-bold text-lg">${selectedPackage.price}</span>
-                                            </div>
-                                            <span className="text-sm font-medium text-muted-foreground uppercase tracking-widest">{selectedPackage.duration_minutes / 60} Total Hours</span>
-                                        </div>
-
-                                        {clientSecret ? (
-                                            <Elements stripe={stripePromise} options={{ clientSecret }}>
-                                                <CheckoutForm amount={selectedPackage.price} onSuccess={() => setIsPurchaseComplete(true)} />
-                                            </Elements>
-                                        ) : (
-                                            <div className="flex flex-col items-center justify-center py-12 gap-4">
-                                                <div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin" />
-                                                <p className="text-sm text-muted-foreground font-medium">Securing payment session...</p>
-                                            </div>
-                                        )}
-
-                                        <p className="text-[10px] text-center text-muted-foreground uppercase tracking-wider font-bold">
-                                            <Shield className="w-3 h-3 inline mr-1" /> Secure encrypted payment processed by Stripe
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
             {/* Header */}
             <section className="bg-primary py-20">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
@@ -245,7 +121,7 @@ export default function LessonsPage() {
                                     </li>
                                 ))}
                             </ul>
-                            <Link href="/book">
+                            <Link href={`/book?lessonId=${lesson.id}`}>
                                 <Button variant={lesson.isPopular ? 'accent' : 'outline'} className="w-full">Book This Lesson</Button>
                             </Link>
                         </motion.div>
@@ -278,7 +154,10 @@ export default function LessonsPage() {
                                 <div className="space-y-2 relative">
                                     <span className="text-secondary text-xs font-bold uppercase tracking-widest">{pkg.tag}</span>
                                     <h3 className="text-2xl font-bold">{pkg.title}</h3>
-                                    <p className="text-primary-foreground/60">{pkg.duration_minutes / 60} Total Hours</p>
+                                    <p className="text-primary-foreground/60">
+                                        {pkg.lesson_count} × {pkg.duration_minutes / pkg.lesson_count} min sessions
+                                        &nbsp;·&nbsp; {pkg.duration_minutes / 60} hrs total
+                                    </p>
                                 </div>
 
                                 <div className="flex items-baseline gap-2">
@@ -299,9 +178,11 @@ export default function LessonsPage() {
                                     ))}
                                 </ul>
 
-                                <Button variant="secondary" className="w-full h-12" onClick={() => handlePackagePurchase(pkg)}>
-                                    Buy Package Now
-                                </Button>
+                                <Link href={`/book?lessonId=${pkg.id}`} className="block">
+                                    <Button variant="secondary" className="w-full h-12">
+                                        Book Package Now
+                                    </Button>
+                                </Link>
                             </motion.div>
                         ))}
                     </div>

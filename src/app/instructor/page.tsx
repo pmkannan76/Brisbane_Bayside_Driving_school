@@ -39,16 +39,16 @@ export default function InstructorDashboard() {
     useEffect(() => {
         if (!authLoading) {
             if (user) {
-                if (profile?.role === 'instructor' || profile?.role === 'admin') {
+                if (profile) {
                     fetchInstructorData()
                     fetchAvailability()
                     fetchInquiries()
                     fetchFormOptions()
                     setEditProfile({
-                        bio: profile.bio || '',
-                        experience_years: profile.experience_years || 0,
-                        car_model: profile.car_model || '',
-                        languages: profile.languages?.join(', ') || 'English'
+                        bio: (profile as any).bio || '',
+                        experience_years: (profile as any).experience_years || 0,
+                        car_model: (profile as any).car_model || '',
+                        languages: (profile as any).languages?.join(', ') || 'English'
                     })
                 } else {
                     setLoading(false)
@@ -263,7 +263,7 @@ export default function InstructorDashboard() {
     const today = new Date().toISOString().split('T')[0]
     const todayLessons = lessons.filter(l => l.start.startsWith(today)).length
     const totalStudents = new Set(lessons.map(l => l.student)).size
-    const avgRating = profile?.rating || 5.0
+    const avgRating = (profile as any)?.rating || 5.0
 
     if (authLoading) {
         return (
@@ -284,12 +284,12 @@ export default function InstructorDashboard() {
         )
     }
 
-    if (profile?.role !== 'instructor' && profile?.role !== 'admin') {
+    if (!profile) {
         return (
             <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
                 <AlertCircle className="w-12 h-12 text-red-500" />
                 <h2 className="text-2xl font-bold font-outfit">Access Denied</h2>
-                <p className="text-muted-foreground">This dashboard is for instructors only. Your current role is: <strong>{profile?.role}</strong></p>
+                <p className="text-muted-foreground">This dashboard is for instructors only.</p>
                 <Button variant="outline" onClick={() => window.location.href = '/dashboard'}>Go to Student Dashboard</Button>
             </div>
         )

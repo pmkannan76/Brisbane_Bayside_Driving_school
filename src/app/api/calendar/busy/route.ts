@@ -9,6 +9,7 @@ export async function GET(req: Request) {
     try {
         const url = new URL(req.url);
         const instructorId = url.searchParams.get('instructorId');
+        const currentStudentId = url.searchParams.get('studentId') || '';
 
         if (!instructorId) {
             return NextResponse.json({ error: 'instructorId required' }, { status: 400 });
@@ -16,20 +17,50 @@ export async function GET(req: Request) {
 
         const adminClient = getServiceRoleClient();
 
-        // 1. Fetch Supabase Bookings
+        // Fetch configurable buffer from settings (default 30 mins)
+        const { data: bufferSetting } = await adminClient
+            .from('settings')
+            .select('value')
+            .eq('key', 'instructor_buffer_mins')
+            .single();
+        const bufferMins = parseInt(bufferSetting?.value || '30', 10);
+
+        // 1. Fetch Supabase Bookings (include student_id for buffer logic)
         const { data: bookingsData } = await adminClient
             .from('bookings')
-            .select('start_time, end_time')
+            .select('start_time, end_time, student_id')
             .eq('instructor_id', instructorId)
             .in('status', ['scheduled', 'completed']);
 
-        let busySlots = (bookingsData || []).map((b: any) => ({
-            start: b.start_time,
-            end: b.end_time,
-            display: 'background',
-            backgroundColor: '#fee2e2',
-            className: 'busy-slot'
-        }));
+        let busySlots = (bookingsData || []).flatMap((b: any) => {
+            const isSameStudent = b.student_id === currentStudentId;
+            const slots: any[] = [{
+                start: b.start_time,
+                end: b.end_time,
+                display: 'background',
+                backgroundColor: '#fee2e2',
+                className: 'busy-slot',
+                extendedProps: { studentId: b.student_id, isBuffer: false },
+            }];
+            // Add visual buffer block for different-user bookings
+            if (!isSameStudent && bufferMins > 0) {
+                const bufferStart = b.end_time;
+                const bufferEnd = new Date(new Date(b.end_time).getTime() + bufferMins * 60 * 1000).toISOString();
+                slots.push({
+                    start: bufferStart,
+                    end: bufferEnd,
+                    title: `Travel Buffer (${bufferMins}m)`,
+                    display: 'block',
+                    backgroundColor: '#f97316',
+                    borderColor: '#ea580c',
+                    textColor: '#fff',
+                    className: 'buffer-slot',
+                    editable: false,
+                    extendedProps: { studentId: b.student_id, isBuffer: true },
+                });
+            }
+            return slots;
+        });
 
         // 2. Fetch Google Calendar Token
         const { data: setting } = await adminClient
@@ -83,7 +114,7 @@ export async function GET(req: Request) {
             }
         }
 
-        return NextResponse.json({ busySlots });
+        return NextResponse.json({ busySlots, bufferMins });
     } catch (err: any) {
         console.error('Calendar Fetch Error:', err);
         return NextResponse.json({ error: err.message }, { status: 500 });
