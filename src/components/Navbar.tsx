@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Menu, X, Car, User, LogOut, LayoutDashboard } from 'lucide-react'
 import { Button } from './ui/Button'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase' // used for public settings fetch only
 
 const navLinks = [
     { name: 'Home', href: '/' },
@@ -36,12 +36,7 @@ export const Navbar = () => {
         return () => window.removeEventListener('scroll', handleScroll)
     }, [])
 
-    const getDashboardLink = () => {
-        if (!profile) return '/dashboard'
-        if (profile.role === 'admin') return '/admin'
-        if (profile.role === 'instructor') return '/instructor'
-        return '/dashboard'
-    }
+    const getDashboardLink = () => '/dashboard'
 
     return (
         <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'glass py-3 shadow-sm' : 'bg-transparent py-5'}`}>
@@ -74,6 +69,14 @@ export const Navbar = () => {
                             </Link>
                         ))}
 
+                        <div className="flex items-center gap-2">
+                            <a href="https://www.facebook.com/profile.php?id=61577753661994" target="_blank" rel="noopener noreferrer" className="hover:opacity-75 transition-opacity">
+                                <img src="/facebook.png" alt="Facebook" className="w-6 h-6 object-contain" />
+                            </a>
+                            <a href="https://www.instagram.com/brisbanebaysidedriving" target="_blank" rel="noopener noreferrer" className="hover:opacity-75 transition-opacity">
+                                <img src="/instagram.png" alt="Instagram" className="w-6 h-6 object-contain" />
+                            </a>
+                        </div>
                         <div className="flex items-center gap-4 border-l pl-8 border-border">
                             {user ? (
                                 <div className="relative">

@@ -1,7 +1,12 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'
+
+function getResend() {
+    const key = process.env.RESEND_API_KEY
+    if (!key) throw new Error('RESEND_API_KEY is not set')
+    return new Resend(key)
+}
 
 export async function sendBookingConfirmationEmail({
     studentEmail,
@@ -36,7 +41,7 @@ export async function sendBookingConfirmationEmail({
 
     // 1. Send to Student
     try {
-        await resend.emails.send({
+        await getResend().emails.send({
             from: fromEmail,
             to: studentEmail,
             subject: 'Lesson Booking Confirmed - Brisbane Bayside Driving School',
@@ -91,7 +96,7 @@ export async function sendBookingConfirmationEmail({
     // 2. Send to Instructor
     if (instructorEmail) {
         try {
-            await resend.emails.send({
+            await getResend().emails.send({
                 from: fromEmail,
                 to: instructorEmail,
                 subject: `New Booking: ${studentName} - ${dateStr}`,
@@ -142,7 +147,7 @@ export async function sendPackagePurchaseEmail({
     }
 
     try {
-        await resend.emails.send({
+        await getResend().emails.send({
             from: fromEmail,
             to: studentEmail,
             subject: 'Lesson Package Purchased - Brisbane Bayside Driving School',

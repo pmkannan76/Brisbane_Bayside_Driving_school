@@ -5,18 +5,20 @@ import { addGoogleCalendarEvent } from '@/lib/calendar'
 
 export async function POST(req: Request) {
     try {
-        const { studentId, instructorId, lessonId, startTime, endTime, pickupAddress, transmissionType } = await req.json()
+        const { studentId, instructorId, lessonId, slots, pickupAddress, transmissionType } = await req.json()
 
-        if (!studentId || !instructorId || !lessonId || !startTime) {
+        // slots: [{ start_time: string, end_time: string }]
+        if (!studentId || !instructorId || !lessonId || !slots?.length) {
             return NextResponse.json({ error: 'Missing required booking details' }, { status: 400 })
         }
 
+        const numSlots = slots.length
         const adminClient = getServiceRoleClient()
 
         // 1. Fetch Student Profile for Credits and Expiry
         const { data: profile, error: profileError } = await adminClient
-            .from('profiles')
-            .select('credits_remaining, package_expiry, full_name, role')
+            .from('users')
+            .select('credits_remaining, package_expiry, full_name, email')
             .eq('id', studentId)
             .single()
 
@@ -24,108 +26,104 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Student profile not found' }, { status: 404 })
         }
 
-        if (profile.credits_remaining <= 0) {
-            return NextResponse.json({ error: 'No credits remaining. Please purchase a package.' }, { status: 403 })
+        if (profile.credits_remaining < numSlots) {
+            return NextResponse.json({
+                error: `Not enough credits. You have ${profile.credits_remaining} but need ${numSlots}.`
+            }, { status: 403 })
         }
 
         if (profile.package_expiry && new Date() > new Date(profile.package_expiry)) {
             return NextResponse.json({ error: 'Your lesson package has expired.' }, { status: 403 })
         }
 
-        // 2. Sequential Booking Validation
-        // Fetch the latest booking for this student
-        const { data: lastBooking } = await adminClient
-            .from('bookings')
-            .select('start_time')
-            .eq('student_id', studentId)
-            .order('start_time', { ascending: false })
-            .limit(1)
-            .single()
+        // 2. Conflict check for every slot
+        for (const slot of slots as { start_time: string; end_time: string }[]) {
+            const { data: existingBooking } = await adminClient
+                .from('bookings')
+                .select('id')
+                .eq('instructor_id', instructorId)
+                .lt('start_time', slot.end_time)
+                .gt('end_time', slot.start_time)
+                .in('status', ['scheduled', 'completed'])
+                .single()
 
-        if (lastBooking && new Date(startTime) < new Date(lastBooking.start_time)) {
-            return NextResponse.json({
-                error: `Sequential booking required. Please select a date after your last booking (${new Date(lastBooking.start_time).toLocaleDateString()}).`
-            }, { status: 400 })
+            if (existingBooking) {
+                return NextResponse.json({
+                    error: `Trainer is already booked for the slot on ${new Date(slot.start_time).toLocaleDateString()}.`
+                }, { status: 409 })
+            }
         }
 
-        // 3. Trainer Availability Check
-        const { data: existingBooking } = await adminClient
-            .from('bookings')
-            .select('id')
-            .eq('instructor_id', instructorId)
-            .lt('start_time', endTime)
-            .gt('end_time', startTime)
-            .in('status', ['scheduled', 'completed'])
-            .single()
-
-        if (existingBooking) {
-            return NextResponse.json({ error: 'Trainer is already booked for this slot.' }, { status: 409 })
-        }
-
-        // 4. Atomically Deduct Credit and Create Booking
-        // Note: Using a transaction or simple sequential updates since we are using service role
+        // 3. Deduct all credits upfront
         const { error: deductError } = await adminClient
-            .from('profiles')
-            .update({ credits_remaining: profile.credits_remaining - 1 })
+            .from('users')
+            .update({ credits_remaining: profile.credits_remaining - numSlots })
             .eq('id', studentId)
 
         if (deductError) throw deductError
 
+        // 4. Create all bookings
+        const bundleId = slots.length > 1 ? crypto.randomUUID() : null
+        const bookingsToInsert = (slots as { start_time: string; end_time: string }[]).map(slot => ({
+            student_id: studentId,
+            instructor_id: instructorId,
+            lesson_id: lessonId,
+            start_time: slot.start_time,
+            end_time: slot.end_time,
+            status: 'scheduled',
+            payment_status: 'paid',
+            pickup_address: pickupAddress,
+            transmission_type: transmissionType,
+            credits_used: 1,
+            bundle_id: bundleId,
+        }))
+
         const { error: bookingError } = await adminClient
             .from('bookings')
-            .insert({
-                student_id: studentId,
-                instructor_id: instructorId,
-                lesson_id: lessonId,
-                start_time: startTime,
-                end_time: endTime,
-                status: 'scheduled',
-                payment_status: 'paid', // Pre-paid via credits
-                pickup_address: pickupAddress,
-                transmission_type: transmissionType,
-                credits_used: 1
-            })
+            .insert(bookingsToInsert)
 
         if (bookingError) {
-            // Rollback credit if booking fails
+            // Rollback credits on booking failure
             await adminClient
-                .from('profiles')
+                .from('users')
                 .update({ credits_remaining: profile.credits_remaining })
                 .eq('id', studentId)
             throw bookingError
         }
 
-        // 5. Send Centralized Email Notification
+        // 5. Send confirmation email + Google Calendar events
         try {
-            // Get Student & Instructor details for email
-            const [{ data: { user: studentAuth } }, { data: instructorProfile }, { data: lesson }] = await Promise.all([
-                adminClient.auth.admin.getUserById(studentId),
-                adminClient.from('profiles').select('full_name, email').eq('id', instructorId).single(),
+            const [{ data: instructorProfile }, { data: lesson }] = await Promise.all([
+                adminClient.from('instructors').select('full_name, email').eq('id', instructorId).single(),
                 adminClient.from('lessons').select('title').eq('id', lessonId).single()
             ])
 
-            if (studentAuth?.email) {
+            if (profile.email) {
+                const lessonTitle = (lesson?.title || 'Driving Lesson') +
+                    (numSlots > 1 ? ` (1 of ${numSlots} sessions)` : '')
+
                 await sendBookingConfirmationEmail({
-                    studentEmail: studentAuth.email,
+                    studentEmail: profile.email,
                     studentName: profile.full_name || 'Student',
                     instructorEmail: instructorProfile?.email,
                     instructorName: instructorProfile?.full_name,
-                    lessonTitle: lesson?.title || 'Driving Lesson',
-                    startTime,
+                    lessonTitle,
+                    startTime: slots[0].start_time,
                     pickupAddress,
                     transmissionType,
-                    creditsRemaining: profile.credits_remaining - 1
+                    creditsRemaining: profile.credits_remaining - numSlots
                 })
 
-                // Google Calendar Sync
-                await addGoogleCalendarEvent({
-                    startTime,
-                    endTime,
-                    studentName: profile.full_name || 'Student',
-                    studentEmail: studentAuth.email,
-                    pickupAddress,
-                    lessonTitle: lesson?.title || 'Driving Lesson'
-                })
+                for (const slot of slots as { start_time: string; end_time: string }[]) {
+                    await addGoogleCalendarEvent({
+                        startTime: slot.start_time,
+                        endTime: slot.end_time,
+                        studentName: profile.full_name || 'Student',
+                        studentEmail: profile.email,
+                        pickupAddress,
+                        lessonTitle: lesson?.title || 'Driving Lesson'
+                    })
+                }
             }
         } catch (emailErr) {
             console.error('Failed to send confirmation email:', emailErr)

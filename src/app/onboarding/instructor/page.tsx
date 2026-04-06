@@ -37,7 +37,7 @@ export default function InstructorOnboarding() {
         }
 
         // If they already have basic data, maybe redirect them to their dashboard
-        if (!authLoading && profile?.role !== 'instructor') {
+        if (!authLoading && !profile) {
             setMessage({ type: 'error', text: 'This onboarding is only for instructors. Please contact support if you need your account upgraded.' })
         }
     }, [user, profile, authLoading, router])
@@ -83,7 +83,7 @@ export default function InstructorOnboarding() {
                     address: address,
                     languages: languages.split(',').map(s => s.trim()).filter(Boolean),
                     car_model: carModel,
-                    avatar_url: avatarUrl || profile?.avatar_url,
+                    avatar_url: avatarUrl || (profile as any)?.avatar_url,
                     updated_at: new Date().toISOString(),
                 })
                 .eq('id', user.id)
@@ -106,7 +106,7 @@ export default function InstructorOnboarding() {
         )
     }
 
-    if (profile?.role !== 'instructor') {
+    if (!profile) {
         return (
             <div className="max-w-xl mx-auto pt-20 px-4 py-32 text-center space-y-6">
                 <ShieldCheck className="w-16 h-16 text-muted-foreground mx-auto" />
@@ -268,8 +268,8 @@ export default function InstructorOnboarding() {
                                         <label className="text-sm font-bold uppercase tracking-wider text-foreground/60 px-1">Profile Photo</label>
                                         <div className="flex flex-col md:flex-row items-center gap-6 bg-muted/30 p-6 rounded-2xl border border-border">
                                             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center overflow-hidden shrink-0 shadow-sm border-2 border-border relative group">
-                                                {avatarUrl || profile?.avatar_url ? (
-                                                    <img src={avatarUrl || profile?.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                                                {avatarUrl || (profile as any)?.avatar_url ? (
+                                                    <img src={avatarUrl || (profile as any)?.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                                                 ) : (
                                                     <User className="w-10 h-10 text-muted-foreground/30" />
                                                 )}

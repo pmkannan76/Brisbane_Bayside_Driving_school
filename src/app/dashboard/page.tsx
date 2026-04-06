@@ -5,8 +5,6 @@ import { motion } from 'framer-motion'
 import { Calendar, Clock, BookOpen, Package, ChevronRight, AlertCircle, CheckCircle2, XCircle, User, MapPin, Star, Zap, Phone } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
-import { Booking, Lesson } from '@/types/database'
 import Link from 'next/link'
 
 export default function StudentDashboard() {
@@ -24,17 +22,14 @@ export default function StudentDashboard() {
     const checkStripeRedirect = async () => {
         const searchParams = new URLSearchParams(window.location.search)
         if (searchParams.get('redirect_status') === 'succeeded') {
-            // The user just completed a payment that required a full redirect
             try {
-                await supabase
-                    .from('bookings')
-                    .update({ payment_status: 'paid' })
-                    .eq('student_id', user?.id)
-                    .eq('payment_status', 'pending')
-
-                // Remove the URL parameters gently
+                await fetch('/api/user/bookings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'confirm_payment' }),
+                })
                 window.history.replaceState({}, document.title, window.location.pathname)
-                fetchBookings() // Refresh the view
+                fetchBookings()
             } catch (err) {
                 console.error('Failed to confirm redirected payment:', err)
             }
@@ -44,18 +39,10 @@ export default function StudentDashboard() {
     const fetchBookings = async () => {
         setLoading(true)
         try {
-            const { data, error } = await supabase
-                .from('bookings')
-                .select(`
-                    *,
-                    instructor:profiles!instructor_id(full_name, phone),
-                    lesson:lessons(*)
-                `)
-                .eq('student_id', user?.id)
-                .order('start_time', { ascending: true })
-
-            if (error) throw error
-            if (data) setBookings(data)
+            const res = await fetch('/api/user/bookings')
+            if (!res.ok) throw new Error('Failed to fetch bookings')
+            const { bookings: data } = await res.json()
+            setBookings(data || [])
         } catch (err: any) {
             console.error('Error fetching bookings:', err.message || JSON.stringify(err))
         } finally {

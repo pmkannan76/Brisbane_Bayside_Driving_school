@@ -4,56 +4,40 @@ import React, { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Mail, Lock, User, Users, UserPlus, Chrome, LogIn, AlertCircle } from 'lucide-react'
+import { Mail, Lock, User, UserPlus, Chrome, LogIn, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { supabase } from '@/lib/supabase'
 
 export default function SignUpPage() {
     const router = useRouter()
     const [fullName, setFullName] = useState('')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
-    const [role, setRole] = useState<'student' | 'instructor'>('student')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [redirect, setRedirect] = useState('/dashboard')
 
     React.useEffect(() => {
         const searchParams = new URLSearchParams(window.location.search)
         const errorParam = searchParams.get('error')
-        if (errorParam) {
-            setError(errorParam)
-        }
+        const redirectParam = searchParams.get('redirect')
+        if (redirectParam) setRedirect(redirectParam)
+        if (errorParam) setError(errorParam)
     }, [])
 
     const handleSignUp = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
         setError(null)
-
         try {
-            const { data, error: signUpError } = await supabase.auth.signUp({
-                email,
-                password,
-                options: {
-                    data: {
-                        full_name: fullName,
-                        role: role,
-                    },
-                },
+            const res = await fetch('/api/auth/signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password, full_name: fullName }),
             })
-
-            if (signUpError) throw signUpError
-
-            if (data.user) {
-                // The profile creation is usually handled by a database trigger in Supabase,
-                // but we'll add a manual check/retry logic if needed, or just redirect.
-                if (role === 'instructor') {
-                    router.push('/onboarding/instructor')
-                } else {
-                    router.push('/dashboard')
-                }
-                router.refresh()
-            }
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed to create account')
+            router.push(redirect)
+            router.refresh()
         } catch (err: any) {
             setError(err.message || 'Failed to create account')
         } finally {
@@ -61,18 +45,8 @@ export default function SignUpPage() {
         }
     }
 
-    const handleGoogleSignUp = async () => {
-        try {
-            const { error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    redirectTo: `${window.location.origin}/auth/callback?role=${role}`,
-                },
-            })
-            if (error) throw error
-        } catch (err: any) {
-            setError(err.message || 'Failed to sign up with Google')
-        }
+    const handleGoogleSignUp = () => {
+        window.location.href = `/api/auth/google?redirect=${encodeURIComponent(redirect)}`
     }
 
     return (
@@ -95,25 +69,6 @@ export default function SignUpPage() {
                 )}
 
                 <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                        <button
-                            onClick={() => setRole('student')}
-                            type="button"
-                            className={`p-4 rounded-2xl border-2 transition-all text-center space-y-2 ${role === 'student' ? 'border-accent bg-accent/5' : 'border-border bg-muted/30 hover:bg-muted/50'}`}
-                        >
-                            <User className={`w-8 h-8 mx-auto ${role === 'student' ? 'text-accent' : 'text-muted-foreground'}`} />
-                            <p className="font-bold">Student</p>
-                        </button>
-                        <button
-                            onClick={() => setRole('instructor')}
-                            type="button"
-                            className={`p-4 rounded-2xl border-2 transition-all text-center space-y-2 ${role === 'instructor' ? 'border-accent bg-accent/5' : 'border-border bg-muted/30 hover:bg-muted/50'}`}
-                        >
-                            <Users className={`w-8 h-8 mx-auto ${role === 'instructor' ? 'text-accent' : 'text-muted-foreground'}`} />
-                            <p className="font-bold">Instructor</p>
-                        </button>
-                    </div>
-
                     <Button
                         onClick={handleGoogleSignUp}
                         variant="outline"
@@ -173,7 +128,7 @@ export default function SignUpPage() {
                                     className="w-full bg-muted/50 border-border border rounded-xl pl-12 pr-5 py-4 focus:ring-2 focus:ring-accent focus:bg-white transition-all outline-none"
                                 />
                             </div>
-                            <p className="text-[10px] text-muted-foreground px-1">Minimum 8 characters with at least one number.</p>
+                            <p className="text-[10px] text-muted-foreground px-1">Minimum 8 characters.</p>
                         </div>
 
                         <Button type="submit" size="lg" className="w-full h-14 rounded-xl gap-2" isLoading={loading}>
