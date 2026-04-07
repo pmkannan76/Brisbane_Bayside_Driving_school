@@ -534,15 +534,68 @@ function BookingPage() {
                                 <FullCalendar
                                     plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
                                     initialView="timeGridWeek"
+                                    locale="en-au"
                                     headerToolbar={{ left: 'prev,next today', center: 'title', right: 'timeGridWeek,timeGridDay' }}
-                                    dayHeaderFormat={{ day: '2-digit', month: '2-digit', omitCommas: true }}
+                                    dayHeaderFormat={{ weekday: 'short', day: '2-digit', month: '2-digit', omitCommas: true }}
                                     titleFormat={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
+                                    slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
                                     allDaySlot={false}
-                                    slotMinTime="00:00:00"
-                                    slotMaxTime="24:00:00"
+                                    slotMinTime="06:00:00"
+                                    slotMaxTime="21:00:00"
                                     height="auto"
                                     dateClick={handleDateClick}
-                                    events={[...instructorBookings, ...selectedEvents]}
+                                    editable={true}
+                                    eventDrop={(info: any) => {
+                                        // Only allow moving selected slots, not booked ones
+                                        if (info.event.classNames.includes('selected-slot')) {
+                                            const idx = selectedSlots.findIndex((s: any) => s.startStr === info.oldEvent.startStr)
+                                            if (idx !== -1) {
+                                                const newStart = info.event.start!
+                                                const newEnd = info.event.end!
+                                                // Validate within availability
+                                                if (instructorAvailability.length > 0) {
+                                                    const dayOfWeek = newStart.getDay()
+                                                    const startHHMM = newStart.toTimeString().slice(0, 5)
+                                                    const endHHMM = newEnd.toTimeString().slice(0, 5)
+                                                    const withinAvail = instructorAvailability.some(a => {
+                                                        if (a.day_of_week !== dayOfWeek) return false
+                                                        return startHHMM >= a.start_time.slice(0, 5) && endHHMM <= a.end_time.slice(0, 5)
+                                                    })
+                                                    if (!withinAvail) {
+                                                        info.revert()
+                                                        setErrorMsg("Can't move here - outside instructor's available hours.")
+                                                        return
+                                                    }
+                                                }
+                                                // Conflict check
+                                                const isConflict = instructorBookings.some((booking: any) => {
+                                                    if (booking.extendedProps?.isBuffer) return false
+                                                    const bStart = new Date(booking.start).getTime()
+                                                    const bEnd = new Date(booking.end).getTime()
+                                                    return newStart.getTime() < bEnd && newEnd.getTime() > bStart
+                                                })
+                                                if (isConflict) {
+                                                    info.revert()
+                                                    setErrorMsg('Slot conflicts with an existing booking.')
+                                                    return
+                                                }
+                                                if (newStart < new Date()) {
+                                                    info.revert()
+                                                    setErrorMsg('Cannot move a slot to the past.')
+                                                    return
+                                                }
+                                                setSelectedSlots(prev => prev.map((s: any, i: number) =>
+                                                    i === idx ? { startStr: newStart.toISOString(), endStr: newEnd.toISOString() } : s
+                                                ))
+                                                setErrorMsg(null)
+                                            }
+                                        } else {
+                                            info.revert()
+                                        }
+                                    }}
+                                    eventStartEditable={true}
+                                    eventDurationEditable={false}
+                                    events={[...instructorBookings, ...selectedEvents.map((e: any) => ({ ...e, editable: true }))]}
                                     businessHours={businessHours}
                                     eventContent={(arg) => {
                                         if (arg.event.extendedProps?.isBuffer) {
@@ -600,12 +653,12 @@ function BookingPage() {
                                             <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-xs font-bold truncate">
-                                                    {new Date(slot.startStr).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
+                                                    {new Date(slot.startStr).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
                                                 </p>
                                                 <p className="text-[11px] text-muted-foreground">
-                                                    {new Date(slot.startStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    {new Date(slot.startStr).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                                     {' – '}
-                                                    {new Date(slot.endStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    {new Date(slot.endStr).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                                 </p>
                                             </div>
                                             <button
@@ -671,12 +724,12 @@ function BookingPage() {
                                         </div>
                                         <div className="bg-white rounded-xl px-4 py-3 border border-border flex items-center justify-between">
                                             <span className="font-bold text-sm">
-                                                {new Date(selectedSlots[0].startStr).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
+                                                {new Date(selectedSlots[0].startStr).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
                                             </span>
                                             <span className="text-sm text-muted-foreground">
-                                                {new Date(selectedSlots[0].startStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                {new Date(selectedSlots[0].startStr).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                                 {' – '}
-                                                {new Date(selectedSlots[0].endStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                {new Date(selectedSlots[0].endStr).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                             </span>
                                         </div>
                                         <div className="flex gap-3">
@@ -731,12 +784,12 @@ function BookingPage() {
                                                 )}
                                             </div>
                                             <span className="font-medium">
-                                                {new Date(slot.startStr).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}
+                                                {new Date(slot.startStr).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })}
                                                 <br />
                                                 <span className="text-xs text-muted-foreground">
-                                                    {new Date(slot.startStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    {new Date(slot.startStr).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                                     {' – '}
-                                                    {new Date(slot.endStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    {new Date(slot.endStr).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                                 </span>
                                             </span>
                                         </div>

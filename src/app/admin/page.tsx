@@ -21,9 +21,11 @@ function ReportsTab() {
     const [from, setFrom] = React.useState(firstOfMonth)
     const [to, setTo] = React.useState(today)
     const [downloading, setDownloading] = React.useState<string | null>(null)
+    const [downloadError, setDownloadError] = React.useState<string | null>(null)
 
     const download = async (type: 'bookings' | 'earnings' | 'packages') => {
         setDownloading(type)
+        setDownloadError(null)
         try {
             const res = await fetch(`/api/admin/reports?type=${type}&from=${from}&to=${to}`)
             if (!res.ok) throw new Error('Failed to generate report')
@@ -35,7 +37,7 @@ function ReportsTab() {
             a.click()
             URL.revokeObjectURL(url)
         } catch (err: any) {
-            alert('Download failed: ' + err.message)
+            setDownloadError('Download failed: ' + err.message)
         } finally {
             setDownloading(null)
         }
@@ -67,6 +69,12 @@ function ReportsTab() {
 
     return (
         <div className="space-y-8">
+            {downloadError && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-3 text-red-600 text-sm font-bold">
+                    <span>&#x26A0;</span> {downloadError}
+                    <button onClick={() => setDownloadError(null)} className="ml-auto text-red-400 hover:text-red-600">x</button>
+                </div>
+            )}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h2 className="text-2xl font-bold font-outfit">Reports & Exports</h2>
@@ -120,8 +128,29 @@ function ReportsTab() {
     )
 }
 
+function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 4000)
+        return () => clearTimeout(timer)
+    }, [onClose])
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: -20, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: -20, x: '-50%' }}
+            className={`fixed top-6 left-1/2 z-[200] px-6 py-3 rounded-2xl shadow-xl text-sm font-bold flex items-center gap-2 ${type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}
+        >
+            {type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+            {message}
+            <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100">x</button>
+        </motion.div>
+    )
+}
+
 export default function AdminDashboard() {
     const router = useRouter()
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => setToast({ message, type })
 
     const handleLogout = async () => {
         await fetch('/api/admin/logout', { method: 'POST' })
@@ -279,7 +308,7 @@ export default function AdminDashboard() {
                         id: u.id,
                         name: u.full_name || 'Anonymous',
                         status: 'active',
-                        joined: new Date(u.updated_at).toLocaleDateString(),
+                        joined: new Date(u.updated_at).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
                     }))
             )
 
@@ -315,7 +344,7 @@ export default function AdminDashboard() {
             fetchAdminData()
             setShowAdjustCreditsModal(null)
         } catch (err: any) {
-            alert('Error adjusting credits: ' + err.message)
+            showToast('Error adjusting credits: ' + err.message, 'error')
         }
     }
 
@@ -330,9 +359,9 @@ export default function AdminDashboard() {
             if (!res.ok) throw new Error((await res.json()).error)
             const { url } = await res.json()
             setLogoUrl(url)
-            alert('Logo updated successfully!')
+            showToast('Logo updated successfully!')
         } catch (err: any) {
-            alert('Failed to upload logo: ' + err.message)
+            showToast('Failed to upload logo: ' + err.message, 'error')
         } finally {
             setIsUploadingLogo(false)
         }
@@ -348,7 +377,7 @@ const toggleLessonStatus = async (id: string, currentStatus: boolean) => {
             if (!res.ok) throw new Error((await res.json()).error)
             fetchAdminData()
         } catch (err: any) {
-            alert('Error updating lesson: ' + err.message)
+            showToast('Error updating lesson: ' + err.message, 'error')
         }
     }
 
@@ -418,7 +447,7 @@ const toggleLessonStatus = async (id: string, currentStatus: boolean) => {
             if (!res.ok) throw new Error((await res.json()).error)
             fetchAdminData()
         } catch (err: any) {
-            alert('Error deleting user: ' + err.message)
+            showToast('Error deleting user: ' + err.message, 'error')
         }
     }
 
@@ -468,7 +497,7 @@ const toggleLessonStatus = async (id: string, currentStatus: boolean) => {
             if (!res.ok) throw new Error((await res.json()).error)
             fetchAdminData()
         } catch (err: any) {
-            alert('Error deleting lesson: ' + err.message)
+            showToast('Error deleting lesson: ' + err.message, 'error')
         }
     }
 
@@ -479,7 +508,7 @@ const toggleLessonStatus = async (id: string, currentStatus: boolean) => {
             if (!res.ok) throw new Error((await res.json()).error)
             fetchAdminData()
         } catch (err: any) {
-            alert('Error deleting booking: ' + err.message)
+            showToast('Error deleting booking: ' + err.message, 'error')
         }
     }
 
@@ -537,11 +566,11 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
         // Client-side validation
         if (is_package) {
             if (!lesson_count || lesson_count < 2) {
-                alert('Package must have at least 2 lessons.')
+                showToast('Package must have at least 2 lessons.', 'error')
                 return
             }
             if (duration_minutes % lesson_count !== 0) {
-                alert(`Total duration (${duration_minutes} mins) must divide evenly by lesson count (${lesson_count}). Each session would be ${(duration_minutes / lesson_count).toFixed(2)} mins — not a whole number.`)
+                showToast(`Total duration (${duration_minutes} mins) must divide evenly by lesson count (${lesson_count}). Each session would be ${(duration_minutes / lesson_count).toFixed(2)} mins.`, 'error')
                 return
             }
         }
@@ -556,7 +585,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
             setShowNewLessonModal(false)
             fetchAdminData()
         } catch (err: any) {
-            alert('Error adding lesson: ' + err.message)
+            showToast('Error adding lesson: ' + err.message, 'error')
         }
     }
 
@@ -631,7 +660,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
             setNewInstructorForm({ full_name: '', email: '', phone: '', bio: '', experience_years: '', car_model: '', languages: 'English', rating: '5' })
             fetchAdminData()
         } catch (err: any) {
-            alert('Error creating instructor: ' + err.message)
+            showToast('Error creating instructor: ' + err.message, 'error')
         }
     }
 
@@ -655,9 +684,9 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
             })
             if (!res.ok) throw new Error((await res.json()).error)
             fetchAdminData()
-            alert('Instructor updated successfully!')
+            showToast('Instructor updated successfully!')
         } catch (err: any) {
-            alert('Error saving instructor: ' + err.message)
+            showToast('Error saving instructor: ' + err.message, 'error')
         }
     }
 
@@ -669,7 +698,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
             setSelectedInstructor(null)
             fetchAdminData()
         } catch (err: any) {
-            alert('Error deleting instructor: ' + err.message)
+            showToast('Error deleting instructor: ' + err.message, 'error')
         }
     }
 
@@ -691,7 +720,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
             const updated = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`)
             if (updated.ok) setInstructorAvailability(await updated.json())
         } catch (err: any) {
-            alert('Error adding slot: ' + err.message)
+            showToast('Error adding slot: ' + err.message, 'error')
         }
     }
 
@@ -713,7 +742,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
             setAddingSlotDay(null)
             setDaySlotForm({ start_time: '09:00', end_time: '17:00' })
         } catch (err: any) {
-            alert('Error adding slot: ' + err.message)
+            showToast('Error adding slot: ' + err.message, 'error')
         }
     }
 
@@ -732,11 +761,11 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
         const endTime = info.end.toTimeString().slice(0, 5)
 
         if (startTime >= endTime) {
-            alert('End time must be after start time.')
+            showToast('End time must be after start time.', 'error')
             return
         }
         if (hasOverlap(dayOfWeek, startTime, endTime)) {
-            alert(`This slot overlaps with an existing availability slot for ${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayOfWeek]}.`)
+            showToast(`This slot overlaps with an existing availability slot for ${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayOfWeek]}.`, 'error')
             return
         }
         try {
@@ -749,7 +778,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
             const updated = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`)
             if (updated.ok) setInstructorAvailability(await updated.json())
         } catch (err: any) {
-            alert('Error adding slot: ' + err.message)
+            showToast('Error adding slot: ' + err.message, 'error')
         }
     }
 
@@ -760,7 +789,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
             if (!res.ok) throw new Error((await res.json()).error)
             setInstructorAvailability(prev => prev.filter(s => s.id !== slotId))
         } catch (err: any) {
-            alert('Error deleting slot: ' + err.message)
+            showToast('Error deleting slot: ' + err.message, 'error')
         }
     }
 
@@ -775,7 +804,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
             if (!res.ok) throw new Error((await res.json()).error)
             setInstructorAvailability(prev => prev.map(s => s.id === slotId ? { ...s, is_active: !current } : s))
         } catch (err: any) {
-            alert('Error updating slot: ' + err.message)
+            showToast('Error updating slot: ' + err.message, 'error')
         }
     }
 
@@ -783,6 +812,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-12 space-y-12">
+            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div className="flex items-center gap-4">
                     <div className="bg-primary p-3 rounded-2xl text-white">
@@ -1267,8 +1297,8 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <p className="text-sm">{new Date(b.start_time).toLocaleDateString()}</p>
-                                                    <p className="text-xs text-muted-foreground">{new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                                    <p className="text-sm">{new Date(b.start_time).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
+                                                    <p className="text-xs text-muted-foreground">{new Date(b.start_time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}</p>
                                                 </td>
                                                 <td className="px-6 py-4 space-y-1">
                                                     <span className={`inline-block px-2 py-1 rounded-full text-[10px] font-bold uppercase ${b.status === 'scheduled' ? 'bg-blue-100 text-blue-700' :
@@ -1342,7 +1372,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                             })
                                         ].sort((a, b) => b.date.getTime() - a.date.getTime()).map(p => (
                                             <tr key={p.id} className="hover:bg-muted/30 transition-colors">
-                                                <td className="px-6 py-4 text-sm text-muted-foreground">{p.date.toLocaleDateString()} {p.date.toLocaleTimeString()}</td>
+                                                <td className="px-6 py-4 text-sm text-muted-foreground">{p.date.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })} {p.date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}</td>
                                                 <td className="px-6 py-4 text-sm font-medium">{p.type}</td>
                                                 <td className="px-6 py-4 text-sm font-bold">${p.amount}</td>
                                                 <td className="px-6 py-4"><span className="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-bold uppercase rounded-full">{p.status}</span></td>
@@ -1555,16 +1585,17 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                                 <FullCalendar
                                                     plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
                                                     initialView="timeGridWeek"
+                                                    locale="en-au"
                                                     headerToolbar={{
                                                         left: 'prev,next today',
                                                         center: 'title',
                                                         right: 'timeGridWeek,dayGridMonth',
                                                     }}
-                                                    dayHeaderFormat={{ day: '2-digit', month: '2-digit', omitCommas: true }}
+                                                    dayHeaderFormat={{ weekday: 'short', day: '2-digit', month: '2-digit', omitCommas: true }}
                                                     titleFormat={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
                                                     allDaySlot={false}
-                                                    slotMinTime="00:00:00"
-                                                    slotMaxTime="24:00:00"
+                                                    slotMinTime="06:00:00"
+                                                    slotMaxTime="21:00:00"
                                                     height="auto"
                                                     selectable={true}
                                                     selectMirror={true}
@@ -1623,7 +1654,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                                             </div>
                                                         )
                                                     }}
-                                                    slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: true }}
+                                                    slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
                                                     nowIndicator={true}
                                                     businessHours={instructorAvailability
                                                         .filter(s => s.is_active)

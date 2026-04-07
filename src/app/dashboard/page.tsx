@@ -149,7 +149,7 @@ export default function StudentDashboard() {
                         <p className="text-4xl font-bold">{profile?.credits_remaining || 0}</p>
                         <p className="text-sm font-medium text-muted-foreground uppercase tracking-widest">Lesson Credits</p>
                         {profile?.package_expiry && (
-                            <p className="text-[10px] text-muted-foreground mt-1 font-bold">Expires: {new Date(profile.package_expiry).toLocaleDateString()}</p>
+                            <p className="text-[10px] text-muted-foreground mt-1 font-bold">Expires: {new Date(profile.package_expiry).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
                         )}
                     </div>
                 </div>
@@ -185,8 +185,8 @@ export default function StudentDashboard() {
 
                                     <div className="flex flex-col items-center md:items-end gap-2">
                                         <div className="text-right">
-                                            <p className="font-bold">{new Date(booking.start_time).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}</p>
-                                            <p className="text-sm text-muted-foreground">{new Date(booking.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                            <p className="font-bold">{new Date(booking.start_time).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
+                                            <p className="text-sm text-muted-foreground">{new Date(booking.start_time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}</p>
                                             {booking.pickup_address && (
                                                 <p className="text-[10px] text-accent mt-1 flex items-center gap-1">
                                                     <MapPin className="w-3 h-3" /> {booking.pickup_address} ({booking.transmission_type})
@@ -252,7 +252,7 @@ export default function StudentDashboard() {
                                     <div key={booking.id} className="flex justify-between items-start gap-4">
                                         <div className="space-y-1">
                                             <p className="text-sm font-bold">{booking.lesson?.title}</p>
-                                            <p className="text-xs text-muted-foreground">{new Date(booking.start_time).toLocaleDateString()}</p>
+                                            <p className="text-xs text-muted-foreground">{new Date(booking.start_time).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
                                         </div>
                                         <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest ${booking.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                             {booking.status}

@@ -445,14 +445,18 @@ export default function InstructorDashboard() {
                         <FullCalendar
                             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
                             initialView="timeGridWeek"
+                            locale="en-au"
                             headerToolbar={{
                                 left: 'prev,next today',
                                 center: 'title',
                                 right: 'timeGridWeek,timeGridDay'
                             }}
+                            dayHeaderFormat={{ weekday: 'short', day: '2-digit', month: '2-digit', omitCommas: true }}
+                            titleFormat={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
+                            slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
                             events={events}
-                            slotMinTime="07:00:00"
-                            slotMaxTime="20:00:00"
+                            slotMinTime="06:00:00"
+                            slotMaxTime="21:00:00"
                             height="auto"
                             allDaySlot={false}
                         />
@@ -468,9 +472,9 @@ export default function InstructorDashboard() {
                                 <div key={lesson.id} className="p-4 bg-muted/50 rounded-2xl space-y-3 border border-transparent hover:border-border transition-colors">
                                     <div className="flex justify-between items-start">
                                         <span className="text-xs font-bold text-accent uppercase tracking-widest leading-none">
-                                            {new Date(lesson.start).toLocaleDateString() === today ? 'Today' : new Date(lesson.start).toLocaleDateString()}
+                                            {new Date(lesson.start).toLocaleDateString('en-AU') === today ? 'Today' : new Date(lesson.start).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                                         </span>
-                                        <span className="text-xs font-bold text-muted-foreground">{new Date(lesson.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        <span className="text-xs font-bold text-muted-foreground">{new Date(lesson.start).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                                     </div>
                                     <div className="space-y-1">
                                         <p className="font-bold text-lg">{lesson.student}</p>
