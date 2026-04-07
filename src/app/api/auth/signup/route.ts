@@ -4,7 +4,18 @@ import { getServiceRoleClient } from '@/lib/supabase'
 import { createSessionToken, setSessionCookie } from '@/lib/session'
 
 export async function POST(request: NextRequest) {
-    const { email, password, full_name } = await request.json()
+    const {
+        email,
+        password,
+        full_name,
+        phone,
+        address,
+        licence_number,
+        licence_type,
+        licence_expiry,
+        gender,
+        date_of_birth,
+    } = await request.json()
 
     if (!email || !password || !full_name) {
         return NextResponse.json({ error: 'Email, password, and full name are required.' }, { status: 400 })
@@ -24,7 +35,18 @@ export async function POST(request: NextRequest) {
 
     const { data: user, error } = await db
         .from('users')
-        .insert({ email: email.toLowerCase(), password_hash, full_name })
+        .insert({
+            email: email.toLowerCase(),
+            password_hash,
+            full_name,
+            phone: phone || null,
+            address: address || null,
+            licence_number: licence_number || null,
+            licence_type: licence_type || null,
+            licence_expiry: licence_expiry || null,
+            gender: gender || null,
+            date_of_birth: date_of_birth || null,
+        })
         .select('id, email, full_name')
         .single()
 

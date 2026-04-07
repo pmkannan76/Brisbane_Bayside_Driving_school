@@ -9,11 +9,23 @@ create table if not exists public.users (
   full_name text,
   phone text,
   address text,
+  licence_number text,                         -- Driver licence number
+  licence_type text,                           -- learner, p1, p2, open, none
+  licence_expiry date,                         -- Licence expiry date
+  gender text,                                 -- male, female, non_binary, prefer_not_to_say
+  date_of_birth date,                          -- Student date of birth
   credits_remaining integer default 0,
   package_expiry timestamp with time zone,
   created_at timestamp with time zone default timezone('utc'::text, now()),
   updated_at timestamp with time zone default timezone('utc'::text, now())
 );
+
+-- Add new registration columns if they don't exist (migration for existing DBs)
+alter table public.users add column if not exists licence_number text;
+alter table public.users add column if not exists licence_type text;
+alter table public.users add column if not exists licence_expiry date;
+alter table public.users add column if not exists gender text;
+alter table public.users add column if not exists date_of_birth date;
 
 alter table public.users enable row level security;
 -- All access goes through service role API routes; no direct client access
