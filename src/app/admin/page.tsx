@@ -154,6 +154,7 @@ export default function AdminDashboard() {
     const [instructorForm, setInstructorForm] = useState({ full_name: '', email: '', bio: '', experience_years: '', car_model: '', languages: '', phone: '', rating: '' })
     const [photoUploading, setPhotoUploading] = useState(false)
     const [bulkAvailForm, setBulkAvailForm] = useState({ startMonth: '', endMonth: '', start_time: '07:00', end_time: '19:00' })
+    const [blockedSlotForm, setBlockedSlotForm] = useState({ date: '', start_time: '12:00', end_time: '13:00' })
     const [bulkAvailLoading, setBulkAvailLoading] = useState(false)
     const [instructorAvailability, setInstructorAvailability] = useState<any[]>([])
     const [availabilityLoading, setAvailabilityLoading] = useState(false)
@@ -517,8 +518,9 @@ const toggleLessonStatus = async (id: string, currentStatus: boolean) => {
 
     const openEditBooking = (b: any) => {
         const start = new Date(b.start_time)
-        const dateStr = start.toISOString().slice(0, 10)
-        const timeStr = start.toTimeString().slice(0, 5)
+        // Extract date/time in Brisbane timezone (AEST = UTC+10, no DST in QLD)
+        const dateStr = start.toLocaleDateString('en-CA', { timeZone: 'Australia/Brisbane' })
+        const timeStr = start.toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit', hour12: false })
         setBookingEditForm({
             instructorId: b.instructor_id || '',
             lessonId: b.lesson_id || '',
@@ -715,18 +717,20 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
     const handleBulkAvailability = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!selectedInstructor) return
-        if (!confirm(`This will replace all existing availability for ${selectedInstructor.full_name} with ${bulkAvailForm.start_time}–${bulkAvailForm.end_time} every day. Continue?`)) return
+        const { startMonth, endMonth, start_time, end_time } = bulkAvailForm
+        const label = startMonth === endMonth ? startMonth : `${startMonth} – ${endMonth}`
+        if (!confirm(`Set availability ${start_time}–${end_time} for every day in ${label} for ${selectedInstructor.full_name}? Existing slots in this range will be replaced.`)) return
         setBulkAvailLoading(true)
         try {
             const res = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability/bulk`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ start_time: bulkAvailForm.start_time, end_time: bulkAvailForm.end_time }),
+                body: JSON.stringify({ startMonth, endMonth, start_time, end_time }),
             })
             if (!res.ok) throw new Error((await res.json()).error)
             const updated = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`)
             if (updated.ok) setInstructorAvailability(await updated.json())
-            alert(`Availability set for all 7 days (${bulkAvailForm.start_time}–${bulkAvailForm.end_time})`)
+            alert(`Availability set for ${label} (${start_time}–${end_time})`)
         } catch (err: any) {
             alert('Error setting availability: ' + err.message)
         } finally {
@@ -792,15 +796,15 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
 
     const toMins = (t: string) => { const [h, m] = t.slice(0, 5).split(':').map(Number); return h * 60 + m }
 
-    const hasOverlap = (dayOfWeek: number, startTime: string, endTime: string, excludeId?: string) => {
+    const hasOverlap = (specificDate: string, startTime: string, endTime: string, type: string, excludeId?: string) => {
         return instructorAvailability
-            .filter(s => s.day_of_week === dayOfWeek && s.id !== excludeId)
+            .filter(s => s.specific_date === specificDate && s.type === type && s.id !== excludeId)
             .some(s => toMins(startTime) < toMins(s.end_time) && toMins(endTime) > toMins(s.start_time))
     }
 
     const handleCalendarSelect = async (info: any) => {
         if (!selectedInstructor) return
-        const dayOfWeek = info.start.getDay()
+        const specificDate = info.start.toLocaleDateString('en-CA', { timeZone: 'Australia/Brisbane' })
         const startTime = info.start.toTimeString().slice(0, 5)
         const endTime = info.end.toTimeString().slice(0, 5)
 
@@ -808,21 +812,41 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
             alert('End time must be after start time.')
             return
         }
-        if (hasOverlap(dayOfWeek, startTime, endTime)) {
-            alert(`This slot overlaps with an existing availability slot for ${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayOfWeek]}.`)
+        if (hasOverlap(specificDate, startTime, endTime, 'available')) {
+            alert(`An available slot already exists for this time on ${specificDate}.`)
             return
         }
         try {
             const res = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ day_of_week: dayOfWeek, start_time: startTime, end_time: endTime }),
+                body: JSON.stringify({ specific_date: specificDate, start_time: startTime, end_time: endTime, type: 'available' }),
             })
             if (!res.ok) throw new Error((await res.json()).error)
             const updated = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`)
             if (updated.ok) setInstructorAvailability(await updated.json())
         } catch (err: any) {
             alert('Error adding slot: ' + err.message)
+        }
+    }
+
+    const handleAddBlockedSlot = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!selectedInstructor) return
+        const { date, start_time, end_time } = blockedSlotForm
+        if (!date || !start_time || !end_time) { alert('Please fill in date, start and end time.'); return }
+        if (start_time >= end_time) { alert('End time must be after start time.'); return }
+        try {
+            const res = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ specific_date: date, start_time, end_time, type: 'blocked' }),
+            })
+            if (!res.ok) throw new Error((await res.json()).error)
+            const updated = await fetch(`/api/admin/instructors/${selectedInstructor.id}/availability`)
+            if (updated.ok) setInstructorAvailability(await updated.json())
+        } catch (err: any) {
+            alert('Error adding block: ' + err.message)
         }
     }
 
@@ -1703,7 +1727,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                         <form onSubmit={handleBulkAvailability} className="bg-muted/50 border border-border rounded-2xl p-5 space-y-4">
                                             <div>
                                                 <h4 className="font-bold text-sm flex items-center gap-2"><Calendar className="w-4 h-4 text-accent" /> Set Availability for Date Range</h4>
-                                                <p className="text-xs text-muted-foreground mt-0.5">Replaces all current slots with a daily recurring window for every day of the week.</p>
+                                                <p className="text-xs text-muted-foreground mt-0.5">Sets availability for every day in the selected month range. Existing slots in that range are replaced.</p>
                                             </div>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                                 <div className="space-y-1">
@@ -1736,22 +1760,60 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                             </Button>
                                         </form>
 
-                                        <div className="flex items-start justify-between gap-4">
+                                        <div className="flex items-start justify-between gap-4 flex-wrap">
                                             <div>
                                                 <h3 className="text-lg font-bold font-outfit flex items-center gap-2">
                                                     <Clock className="w-5 h-5 text-accent" /> Availability Schedule
                                                 </h3>
                                                 <p className="text-xs text-muted-foreground mt-1">
-                                                    Drag to add a slot · Click a slot to remove it · Recurring weekly
+                                                    Drag to add a slot · Click a slot to remove it · Date-specific
                                                 </p>
                                             </div>
                                             <div className="flex flex-wrap items-center gap-3 text-xs shrink-0">
                                                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-green-400 inline-block" /> Available</span>
-                                                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-300 inline-block" /> Disabled</span>
+                                                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-red-400 inline-block" /> Not Available</span>
                                                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" /> Paid booking</span>
                                                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-violet-500 inline-block" /> Pending</span>
                                             </div>
                                         </div>
+
+                                        {/* Not-Available block form */}
+                                        <form onSubmit={handleAddBlockedSlot} className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
+                                            <p className="text-sm font-bold text-red-700 flex items-center gap-2">🚫 Add Not-Available Block</p>
+                                            <div className="flex flex-wrap gap-3 items-end">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-red-600">Date</label>
+                                                    <input
+                                                        type="date"
+                                                        required
+                                                        value={blockedSlotForm.date}
+                                                        onChange={e => setBlockedSlotForm(f => ({ ...f, date: e.target.value }))}
+                                                        className="bg-white border border-red-200 p-2 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-300"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-red-600">From</label>
+                                                    <input
+                                                        type="time"
+                                                        required
+                                                        value={blockedSlotForm.start_time}
+                                                        onChange={e => setBlockedSlotForm(f => ({ ...f, start_time: e.target.value }))}
+                                                        className="bg-white border border-red-200 p-2 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-300"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-red-600">To</label>
+                                                    <input
+                                                        type="time"
+                                                        required
+                                                        value={blockedSlotForm.end_time}
+                                                        onChange={e => setBlockedSlotForm(f => ({ ...f, end_time: e.target.value }))}
+                                                        className="bg-white border border-red-200 p-2 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-300"
+                                                    />
+                                                </div>
+                                                <Button type="submit" size="sm" className="bg-red-500 hover:bg-red-600 text-white rounded-xl">Add Block</Button>
+                                            </div>
+                                        </form>
 
                                         {availabilityLoading ? (
                                             <div className="flex items-center justify-center py-16 gap-3 text-muted-foreground">
@@ -1759,7 +1821,8 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                                 <span className="text-sm">Loading schedule...</span>
                                             </div>
                                         ) : (
-                                            <div className="rounded-2xl overflow-hidden border border-border">
+                                            <div className="rounded-2xl overflow-hidden border border-border avail-cal">
+                                                <style>{`.avail-cal .fc-timegrid-event-harness { inset-inline: 0 !important; }`}</style>
                                                 <FullCalendar
                                                     plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
                                                     initialView="timeGridWeek"
@@ -1772,31 +1835,50 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                                     dayHeaderFormat={{ day: '2-digit', month: '2-digit', omitCommas: true }}
                                                     titleFormat={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
                                                     allDaySlot={false}
-                                                    slotMinTime="00:00:00"
-                                                    slotMaxTime="24:00:00"
+                                                    slotMinTime="06:00:00"
+                                                    slotMaxTime="21:00:00"
+                                                    slotDuration="00:30:00"
+                                                    slotLabelInterval="01:00"
                                                     height="auto"
+                                                    expandRows={true}
                                                     selectable={true}
                                                     selectMirror={true}
                                                     select={handleCalendarSelect}
                                                     eventClick={(info) => {
                                                         if (info.event.extendedProps.type === 'booking') return
-                                                        if (confirm(`Remove this slot (${info.event.title})?`)) {
+                                                        const label = info.event.extendedProps.slotType === 'blocked' ? 'not-available block' : 'availability slot'
+                                                        if (confirm(`Remove this ${label} (${info.event.title})?`)) {
                                                             handleDeleteSlot(info.event.id)
                                                         }
                                                     }}
                                                     events={[
-                                                        // Recurring availability slots
-                                                        ...instructorAvailability.map(slot => ({
-                                                            id: slot.id,
-                                                            title: `${slot.start_time.slice(0, 5)} – ${slot.end_time.slice(0, 5)}`,
-                                                            daysOfWeek: [slot.day_of_week],
-                                                            startTime: slot.start_time.slice(0, 5),
-                                                            endTime: slot.end_time.slice(0, 5),
-                                                            backgroundColor: slot.is_active ? '#22c55e' : '#d1d5db',
-                                                            borderColor: slot.is_active ? '#16a34a' : '#9ca3af',
-                                                            textColor: slot.is_active ? '#fff' : '#6b7280',
-                                                            extendedProps: { type: 'availability', is_active: slot.is_active },
-                                                        })),
+                                                        // Availability slots — green=available, red=blocked
+                                                        ...instructorAvailability.map(slot => {
+                                                            const isBlocked = slot.type === 'blocked'
+                                                            const bg = isBlocked ? '#ef4444' : (slot.is_active ? '#22c55e' : '#d1d5db')
+                                                            const border = isBlocked ? '#dc2626' : (slot.is_active ? '#16a34a' : '#9ca3af')
+                                                            const label = `${isBlocked ? '🚫 ' : ''}${slot.start_time.slice(0, 5)} – ${slot.end_time.slice(0, 5)}`
+                                                            return slot.specific_date ? ({
+                                                                id: slot.id,
+                                                                title: label,
+                                                                start: `${slot.specific_date}T${slot.start_time.slice(0, 5)}`,
+                                                                end: `${slot.specific_date}T${slot.end_time.slice(0, 5)}`,
+                                                                backgroundColor: bg,
+                                                                borderColor: border,
+                                                                textColor: '#fff',
+                                                                extendedProps: { type: 'availability', slotType: slot.type, is_active: slot.is_active },
+                                                            }) : ({
+                                                                id: slot.id,
+                                                                title: label,
+                                                                daysOfWeek: [slot.day_of_week],
+                                                                startTime: slot.start_time.slice(0, 5),
+                                                                endTime: slot.end_time.slice(0, 5),
+                                                                backgroundColor: bg,
+                                                                borderColor: border,
+                                                                textColor: '#fff',
+                                                                extendedProps: { type: 'availability', slotType: slot.type, is_active: slot.is_active },
+                                                            })
+                                                        }),
                                                         // Actual bookings for this instructor
                                                         ...allBookings
                                                             .filter(b => b.instructor_id === selectedInstructor?.id && b.status !== 'cancelled')
@@ -1818,17 +1900,22 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                                     eventContent={(arg) => {
                                                         if (arg.event.extendedProps.type === 'booking') {
                                                             return (
-                                                                <div className="px-1.5 py-1 h-full overflow-hidden">
-                                                                    <div className="text-[11px] font-bold leading-tight truncate">📚 {arg.event.extendedProps.student}</div>
-                                                                    <div className="text-[10px] opacity-90 truncate">{arg.event.extendedProps.lesson}</div>
-                                                                    <div className="text-[10px] opacity-80 capitalize">{arg.event.extendedProps.payment}</div>
+                                                                <div className="px-2 py-1.5 h-full overflow-hidden flex flex-col gap-0.5">
+                                                                    <div className="text-xs font-bold leading-tight truncate">👤 {arg.event.extendedProps.student}</div>
+                                                                    <div className="text-[11px] font-medium opacity-95 truncate">{arg.event.extendedProps.lesson}</div>
+                                                                    <div className="text-[11px] font-semibold capitalize px-1.5 py-0.5 rounded-full bg-white/20 w-fit">
+                                                                        {arg.event.extendedProps.payment === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                                                                    </div>
                                                                 </div>
                                                             )
                                                         }
+                                                        const isBlocked = arg.event.extendedProps.slotType === 'blocked'
                                                         return (
-                                                            <div className="px-1.5 py-1 h-full overflow-hidden">
-                                                                <div className="text-[11px] font-bold leading-tight">{arg.event.title}</div>
-                                                                <div className="text-[10px] opacity-80">{arg.event.extendedProps.is_active ? 'Available' : 'Disabled'}</div>
+                                                            <div className="px-2 py-1.5 h-full overflow-hidden flex flex-col gap-0.5">
+                                                                <div className="text-xs font-bold leading-tight text-white">{arg.event.title}</div>
+                                                                <div className="text-[11px] font-semibold text-white/90">
+                                                                    {isBlocked ? '🚫 Not Available' : (arg.event.extendedProps.is_active ? '✓ Available' : '— Disabled')}
+                                                                </div>
                                                             </div>
                                                         )
                                                     }}

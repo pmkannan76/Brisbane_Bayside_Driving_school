@@ -15,7 +15,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { data: lesson } = await db.from('lessons').select('duration_minutes').eq('id', lessonId).single()
     if (!lesson) return NextResponse.json({ error: 'Lesson not found.' }, { status: 400 })
 
-    const startTime = new Date(`${date}T${time}`)
+    // Treat date+time as Brisbane local time (AEST = UTC+10, no DST in QLD)
+    const startTime = new Date(`${date}T${time}:00+10:00`)
     const endTime = new Date(startTime.getTime() + lesson.duration_minutes * 60000)
 
     // Double-booking check — exclude the booking being edited
