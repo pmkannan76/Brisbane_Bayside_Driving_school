@@ -147,7 +147,7 @@ export default function AdminDashboard() {
     const [editingHire, setEditingHire] = useState<any | null>(null)
     const [showNewInstructorModal, setShowNewInstructorModal] = useState(false)
     const [newInstructorForm, setNewInstructorForm] = useState({ full_name: '', email: '', phone: '', bio: '', experience_years: '', car_model: '', languages: 'English', rating: '5' })
-    const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'lessons' | 'hires' | 'users' | 'bookings' | 'settings' | 'payments' | 'instructors' | 'reports'>('overview')
+    const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'lessons' | 'hires' | 'users' | 'bookings' | 'hire-bookings' | 'settings' | 'payments' | 'instructors' | 'reports'>('overview')
 
     // Instructor management state
     const [selectedInstructor, setSelectedInstructor] = useState<any | null>(null)
@@ -178,6 +178,12 @@ export default function AdminDashboard() {
     const [logoUrl, setLogoUrl] = useState<string>('')
     const [isUploadingLogo, setIsUploadingLogo] = useState(false)
     const [showManualBookingModal, setShowManualBookingModal] = useState(false)
+    const [showNewHireBookingModal, setShowNewHireBookingModal] = useState(false)
+    const [hireBookingTab, setHireBookingTab] = useState<'existing' | 'new'>('existing')
+    const [hireBookingData, setHireBookingData] = useState({ studentId: '', hireId: '', date: '', time: '', pickupAddress: '', paymentMethod: 'pending' as 'paid' | 'pending' })
+    const [hireBookingNewStudent, setHireBookingNewStudent] = useState({ full_name: '', email: '', phone: '', address: '' })
+    const [hireBookingError, setHireBookingError] = useState<string | null>(null)
+    const [hireBookingLoading, setHireBookingLoading] = useState(false)
     const [editingBooking, setEditingBooking] = useState<any | null>(null)
     const [bookingEditForm, setBookingEditForm] = useState({
         instructorId: '', lessonId: '', date: '', time: '',
@@ -622,6 +628,33 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
         }
     }
 
+    const handleCreateHireBooking = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setHireBookingError(null)
+        setHireBookingLoading(true)
+        try {
+            const res = await fetch('/api/admin/bookings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...hireBookingData,
+                    newStudent: hireBookingTab === 'new' ? hireBookingNewStudent : null,
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error)
+            setShowNewHireBookingModal(false)
+            setHireBookingData({ studentId: '', hireId: '', date: '', time: '', pickupAddress: '', paymentMethod: 'pending' })
+            setHireBookingNewStudent({ full_name: '', email: '', phone: '', address: '' })
+            setHireBookingTab('existing')
+            fetchAdminData()
+        } catch (err: any) {
+            setHireBookingError(err.message)
+        } finally {
+            setHireBookingLoading(false)
+        }
+    }
+
     const selectInstructor = async (instructor: any) => {
         setSelectedInstructor(instructor)
         setInstructorForm({
@@ -878,98 +911,68 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
 
     const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
+    const NAV_ITEMS = [
+        { key: 'overview',      label: 'Overview',      icon: LayoutDashboard },
+        { key: 'analytics',     label: 'Analytics',     icon: TrendingUp },
+        { key: 'lessons',       label: 'Lessons',       icon: Clock },
+        { key: 'hires',         label: 'Vehicle Hire',  icon: Car },
+        { key: 'users',         label: 'Students',      icon: Users },
+        { key: 'bookings',      label: 'Bookings',      icon: Calendar },
+        { key: 'hire-bookings', label: 'Hire Bookings', icon: Car },
+        { key: 'payments',      label: 'Payments',      icon: DollarSign },
+        { key: 'instructors',   label: 'Instructors',   icon: UserCheck },
+        { key: 'reports',       label: 'Reports',       icon: TrendingUp },
+        { key: 'settings',      label: 'Settings',      icon: Settings },
+    ] as const
+
     return (
-        <div className="max-w-7xl mx-auto px-4 py-12 space-y-12">
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <div className="flex items-center gap-4">
-                    <div className="bg-primary p-3 rounded-2xl text-white">
-                        <LayoutDashboard className="w-8 h-8" />
-                    </div>
-                    <div>
-                        <h1 className="text-3xl font-bold font-outfit">Admin Panel</h1>
-                        <p className="text-muted-foreground">General system overview and management</p>
+        <div className="min-h-screen flex bg-muted/30">
+            {/* ── Sidebar ─────────────────────────────────────────────── */}
+            <aside className="w-56 shrink-0 bg-card border-r border-border flex flex-col h-screen sticky top-0">
+                {/* Logo */}
+                <div className="p-5 border-b border-border">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-primary p-2 rounded-xl text-white">
+                            <LayoutDashboard className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <p className="font-bold font-outfit text-sm leading-tight">Admin Panel</p>
+                            <p className="text-[11px] text-muted-foreground">Bayside Driving</p>
+                        </div>
                     </div>
                 </div>
-                <div className="flex gap-4">
-                    <Button
-                        variant="outline"
-                        className="rounded-2xl gap-2 text-red-600 border-red-200 hover:bg-red-50"
+
+                {/* Nav items */}
+                <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+                    {NAV_ITEMS.map(item => (
+                        <button
+                            key={item.key}
+                            onClick={() => { setActiveTab(item.key as any); if (item.key === 'instructors') setSelectedInstructor(null) }}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all text-left ${
+                                activeTab === item.key
+                                    ? 'bg-accent text-white shadow-sm'
+                                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                            }`}
+                        >
+                            <item.icon className="w-4 h-4 shrink-0" />
+                            {item.label}
+                        </button>
+                    ))}
+                </nav>
+
+                {/* Logout */}
+                <div className="p-3 border-t border-border">
+                    <button
                         onClick={handleLogout}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition-all"
                     >
                         <LogOut className="w-4 h-4" /> Logout
-                    </Button>
-                    <Button
-                        variant={activeTab === 'overview' ? 'accent' : 'outline'}
-                        className="rounded-2xl"
-                        onClick={() => setActiveTab('overview')}
-                    >
-                        Overview
-                    </Button>
-                    <Button
-                        variant={activeTab === 'analytics' ? 'accent' : 'outline'}
-                        className="rounded-2xl"
-                        onClick={() => setActiveTab('analytics')}
-                    >
-                        Analytics
-                    </Button>
-                    <Button
-                        variant={activeTab === 'lessons' ? 'accent' : 'outline'}
-                        className="rounded-2xl"
-                        onClick={() => setActiveTab('lessons')}
-                    >
-                        Lessons
-                    </Button>
-                    <Button
-                        variant={activeTab === 'hires' ? 'accent' : 'outline'}
-                        className="rounded-2xl"
-                        onClick={() => setActiveTab('hires')}
-                    >
-                        Vehicle Hire
-                    </Button>
-                    <Button
-                        variant={activeTab === 'users' ? 'accent' : 'outline'}
-                        className="rounded-2xl"
-                        onClick={() => setActiveTab('users')}
-                    >
-                        Users
-                    </Button>
-                    <Button
-                        variant={activeTab === 'bookings' ? 'accent' : 'outline'}
-                        className="rounded-2xl"
-                        onClick={() => setActiveTab('bookings')}
-                    >
-                        Bookings
-                    </Button>
-                    <Button
-                        variant={activeTab === 'payments' ? 'accent' : 'outline'}
-                        className="rounded-2xl"
-                        onClick={() => setActiveTab('payments')}
-                    >
-                        Payments
-                    </Button>
-                    <Button
-                        variant={activeTab === 'instructors' ? 'accent' : 'outline'}
-                        className="rounded-2xl"
-                        onClick={() => { setActiveTab('instructors'); setSelectedInstructor(null) }}
-                    >
-                        Instructors
-                    </Button>
-                    <Button
-                        variant={activeTab === 'reports' ? 'accent' : 'outline'}
-                        className="rounded-2xl"
-                        onClick={() => setActiveTab('reports')}
-                    >
-                        Reports
-                    </Button>
-                    <Button
-                        variant={activeTab === 'settings' ? 'accent' : 'outline'}
-                        className="rounded-2xl"
-                        onClick={() => setActiveTab('settings')}
-                    >
-                        Settings
-                    </Button>
+                    </button>
                 </div>
-            </header>
+            </aside>
+
+            {/* ── Main content ─────────────────────────────────────────── */}
+            <main className="flex-1 min-w-0 p-8 space-y-8 overflow-y-auto">
 
             {/* Analytics Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1482,6 +1485,212 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                         </>
                     )}
 
+
+                    {activeTab === 'hire-bookings' && (
+                        <>
+                            <div className="flex justify-between items-center text-sm">
+                                <div>
+                                    <h2 className="text-2xl font-bold font-outfit">Vehicle Hire Bookings</h2>
+                                    <p className="text-muted-foreground text-sm mt-1">Bookings where a student has hired a vehicle for their test.</p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <Button size="sm" variant="outline" className="rounded-xl gap-2" onClick={() => fetchAdminData()}>
+                                        Refresh
+                                    </Button>
+                                    <Button size="sm" className="rounded-xl gap-2" onClick={() => { setHireBookingError(null); setShowNewHireBookingModal(true) }}>
+                                        <Plus className="w-4 h-4" /> New Hire Booking
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {showNewHireBookingModal && (
+                                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                                    <div className="bg-card border border-border rounded-[2.5rem] shadow-2xl w-full max-w-xl p-8 space-y-6 overflow-y-auto max-h-[90vh]">
+                                        <div className="flex justify-between items-center">
+                                            <h3 className="text-xl font-bold font-outfit">New Vehicle Hire Booking</h3>
+                                            <button onClick={() => setShowNewHireBookingModal(false)} className="text-muted-foreground hover:text-foreground text-2xl leading-none">✕</button>
+                                        </div>
+
+                                        {hireBookingError && (
+                                            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl flex items-center gap-3 text-sm">
+                                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                                <p>{hireBookingError}</p>
+                                            </div>
+                                        )}
+
+                                        {/* Student tab toggle */}
+                                        <div className="flex gap-1 bg-muted p-1 rounded-xl w-fit text-sm">
+                                            <button onClick={() => setHireBookingTab('existing')} className={`px-4 py-1.5 rounded-lg font-bold transition-all ${hireBookingTab === 'existing' ? 'bg-white shadow text-accent' : 'text-muted-foreground'}`}>Existing Student</button>
+                                            <button onClick={() => setHireBookingTab('new')} className={`px-4 py-1.5 rounded-lg font-bold transition-all ${hireBookingTab === 'new' ? 'bg-white shadow text-accent' : 'text-muted-foreground'}`}>New Student</button>
+                                        </div>
+
+                                        <form onSubmit={handleCreateHireBooking} className="space-y-4">
+                                            {hireBookingTab === 'existing' ? (
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Student *</label>
+                                                    <select
+                                                        required
+                                                        value={hireBookingData.studentId}
+                                                        onChange={e => setHireBookingData(d => ({ ...d, studentId: e.target.value }))}
+                                                        className="w-full bg-muted border border-border p-2 rounded-lg text-sm"
+                                                    >
+                                                        <option value="">Select a student…</option>
+                                                        {allUsers.map((u: any) => (
+                                                            <option key={u.id} value={u.id}>{u.full_name} {u.email ? `(${u.email})` : ''}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-2 gap-3 p-4 bg-muted/50 rounded-xl border border-border">
+                                                    <div className="space-y-1 col-span-2">
+                                                        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Name *</label>
+                                                        <input required value={hireBookingNewStudent.full_name} onChange={e => setHireBookingNewStudent(s => ({ ...s, full_name: e.target.value }))} placeholder="Jane Smith" className="w-full bg-background border border-border p-2 rounded-lg text-sm" />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Email</label>
+                                                        <input type="email" value={hireBookingNewStudent.email} onChange={e => setHireBookingNewStudent(s => ({ ...s, email: e.target.value }))} placeholder="jane@example.com" className="w-full bg-background border border-border p-2 rounded-lg text-sm" />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone</label>
+                                                        <input value={hireBookingNewStudent.phone} onChange={e => setHireBookingNewStudent(s => ({ ...s, phone: e.target.value }))} placeholder="04xx xxx xxx" className="w-full bg-background border border-border p-2 rounded-lg text-sm" />
+                                                    </div>
+                                                    <div className="space-y-1 col-span-2">
+                                                        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Address</label>
+                                                        <input value={hireBookingNewStudent.address} onChange={e => setHireBookingNewStudent(s => ({ ...s, address: e.target.value }))} placeholder="123 Main St, Brisbane" className="w-full bg-background border border-border p-2 rounded-lg text-sm" />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Vehicle Hire Option *</label>
+                                                <select
+                                                    required
+                                                    value={hireBookingData.hireId}
+                                                    onChange={e => setHireBookingData(d => ({ ...d, hireId: e.target.value }))}
+                                                    className="w-full bg-muted border border-border p-2 rounded-lg text-sm"
+                                                >
+                                                    <option value="">Select vehicle hire…</option>
+                                                    {vehicleHires.filter((h: any) => h.is_active).map((h: any) => (
+                                                        <option key={h.id} value={h.id}>{h.vehicle_type === 'truck' ? '🚛' : '🚗'} {h.title} — ${h.price} · {h.duration_minutes}min</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Date *</label>
+                                                    <input
+                                                        type="date"
+                                                        required
+                                                        value={hireBookingData.date}
+                                                        onChange={e => setHireBookingData(d => ({ ...d, date: e.target.value }))}
+                                                        className="w-full bg-muted border border-border p-2 rounded-lg text-sm"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Time *</label>
+                                                    <input
+                                                        type="time"
+                                                        required
+                                                        value={hireBookingData.time}
+                                                        onChange={e => setHireBookingData(d => ({ ...d, time: e.target.value }))}
+                                                        className="w-full bg-muted border border-border p-2 rounded-lg text-sm"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pickup Address</label>
+                                                <input
+                                                    value={hireBookingData.pickupAddress}
+                                                    onChange={e => setHireBookingData(d => ({ ...d, pickupAddress: e.target.value }))}
+                                                    placeholder="123 Main St, Brisbane"
+                                                    className="w-full bg-muted border border-border p-2 rounded-lg text-sm"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Payment Status</label>
+                                                <select
+                                                    value={hireBookingData.paymentMethod}
+                                                    onChange={e => setHireBookingData(d => ({ ...d, paymentMethod: e.target.value as 'paid' | 'pending' }))}
+                                                    className="w-full bg-muted border border-border p-2 rounded-lg text-sm"
+                                                >
+                                                    <option value="pending">Pending</option>
+                                                    <option value="paid">Paid</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="flex justify-end gap-3 pt-2">
+                                                <Button type="button" variant="ghost" onClick={() => setShowNewHireBookingModal(false)}>Cancel</Button>
+                                                <Button type="submit" isLoading={hireBookingLoading}>Create Hire Booking</Button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="bg-card border border-border rounded-[2.5rem] overflow-hidden shadow-sm">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-muted/50 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                            <th className="px-6 py-5">Student</th>
+                                            <th className="px-6 py-5">Vehicle Option</th>
+                                            <th className="px-6 py-5">Date & Time</th>
+                                            <th className="px-6 py-5">Pickup Address</th>
+                                            <th className="px-6 py-5">Status</th>
+                                            <th className="px-6 py-5 text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/50">
+                                        {allBookings.filter((b: any) => b.hire_id).length === 0 && (
+                                            <tr><td colSpan={6} className="px-6 py-10 text-center text-sm text-muted-foreground">No vehicle hire bookings yet.</td></tr>
+                                        )}
+                                        {allBookings.filter((b: any) => b.hire_id).map((b: any) => {
+                                            const student = allUsers.find((u: any) => u.id === b.student_id)
+                                            const hire = vehicleHires.find((h: any) => h.id === b.hire_id)
+                                            return (
+                                                <tr key={b.id} className="hover:bg-muted/30 transition-colors">
+                                                    <td className="px-6 py-4">
+                                                        <p className="font-medium text-sm">{student?.full_name || 'Unknown'}</p>
+                                                        <p className="text-xs text-muted-foreground">{student?.email || 'No email'}</p>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm">
+                                                        {hire ? (
+                                                            <span className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-full uppercase tracking-wide ${hire.vehicle_type === 'truck' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                {hire.vehicle_type === 'truck' ? '🚛' : '🚗'} {hire.title}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground">Unknown</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <p className="text-sm">{new Date(b.start_time).toLocaleDateString('en-AU', { timeZone: 'Australia/Brisbane', day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                                        <p className="text-xs text-muted-foreground">{new Date(b.start_time).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit' })} – {new Date(b.end_time).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit' })}</p>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-muted-foreground max-w-xs truncate">
+                                                        {b.pickup_address || '—'}
+                                                    </td>
+                                                    <td className="px-6 py-4 space-y-1">
+                                                        <span className={`inline-block px-2 py-1 rounded-full text-[10px] font-bold uppercase ${b.status === 'scheduled' ? 'bg-blue-100 text-blue-700' : b.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                            {b.status}
+                                                        </span>
+                                                        <span className={`inline-block ml-1 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${b.payment_status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                                            {b.payment_status || 'pending'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                                                        <Button variant="ghost" size="sm" className="text-accent" onClick={() => openEditBooking(b)}>Edit</Button>
+                                                        <Button variant="ghost" size="sm" className="text-red-500 hover:bg-red-50" onClick={() => deleteBooking(b.id)}>Delete</Button>
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
 
                     {activeTab === 'payments' && (
                         <>
@@ -2673,6 +2882,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                     </motion.div>
                 </div>
             )}
+            </main>
         </div>
     )
 }

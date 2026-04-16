@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { studentId, instructorId, lessonId, date, time, transmission, vehicleType, pickupAddress, paymentMethod, newStudent } = await request.json()
+    const { studentId, instructorId, lessonId, hireId, date, time, transmission, vehicleType, pickupAddress, paymentMethod, newStudent } = await request.json()
     // newStudent fields: full_name, email, phone, address, gender, license_number, license_expiry
     const db = getServiceRoleClient()
 
@@ -45,6 +45,49 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'No student selected or provided.' }, { status: 400 })
     }
 
+    // ── Vehicle hire booking ──────────────────────────────────────────────────
+    if (hireId) {
+        const { data: hire } = await db.from('vehicle_hires').select('duration_minutes, vehicle_type').eq('id', hireId).single()
+        if (!hire) return NextResponse.json({ error: 'Hire option not found.' }, { status: 400 })
+
+        const startTime = new Date(`${date}T${time}:00+10:00`)
+        const endTime = new Date(startTime.getTime() + hire.duration_minutes * 60000)
+
+        // Check vehicle isn't already booked at this time
+        const { data: conflicts } = await db
+            .from('bookings')
+            .select('id, start_time')
+            .eq('hire_id', hireId)
+            .in('status', ['scheduled'])
+            .lt('start_time', endTime.toISOString())
+            .gt('end_time', startTime.toISOString())
+
+        if (conflicts && conflicts.length > 0) {
+            const clashTime = new Date(conflicts[0].start_time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })
+            const clashDate = new Date(conflicts[0].start_time).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })
+            return NextResponse.json(
+                { error: `This vehicle is already booked on ${clashDate} at ${clashTime}. Please choose a different time.` },
+                { status: 409 }
+            )
+        }
+
+        const { error: bookingError } = await db.from('bookings').insert({
+            student_id: resolvedStudentId,
+            hire_id: hireId,
+            start_time: startTime.toISOString(),
+            end_time: endTime.toISOString(),
+            status: 'scheduled',
+            payment_status: paymentMethod || 'pending',
+            pickup_address: pickupAddress || 'Admin booking',
+            vehicle_type: hire.vehicle_type,
+            needs_instructor: false,
+        })
+
+        if (bookingError) return NextResponse.json({ error: bookingError.message }, { status: 500 })
+        return NextResponse.json({ success: true }, { status: 201 })
+    }
+
+    // ── Lesson booking ────────────────────────────────────────────────────────
     const { data: lesson } = await db.from('lessons').select('duration_minutes, price').eq('id', lessonId).single()
     if (!lesson) return NextResponse.json({ error: 'Lesson not found.' }, { status: 400 })
 
