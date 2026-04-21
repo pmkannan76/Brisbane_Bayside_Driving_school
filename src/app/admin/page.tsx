@@ -7,7 +7,7 @@ import {
     Users, UserCheck, Calendar, DollarSign, TrendingUp,
     Search, Filter, MoreHorizontal, CheckCircle,
     XCircle, AlertCircle, Plus, LayoutDashboard, ChevronRight, Settings, Upload, Image as ImageIcon, LogOut,
-    Car, Star, Clock, Trash2, Edit2
+    Car, Star, Clock, Trash2, Edit2, Download, FileText
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import FullCalendar from '@fullcalendar/react'
@@ -15,17 +15,19 @@ import timeGridPlugin from '@fullcalendar/timegrid'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import interactionPlugin from '@fullcalendar/interaction'
 
-function ReportsTab() {
+function ReportsTab({ students }: { students: any[] }) {
     const today = new Date().toISOString().split('T')[0]
     const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
     const [from, setFrom] = React.useState(firstOfMonth)
     const [to, setTo] = React.useState(today)
+    const [studentId, setStudentId] = React.useState('all')
     const [downloading, setDownloading] = React.useState<string | null>(null)
 
     const download = async (type: 'bookings' | 'earnings' | 'packages') => {
         setDownloading(type)
         try {
-            const res = await fetch(`/api/admin/reports?type=${type}&from=${from}&to=${to}`)
+            const studentParam = type === 'bookings' && studentId !== 'all' ? `&studentId=${studentId}` : ''
+            const res = await fetch(`/api/admin/reports?type=${type}&from=${from}&to=${to}${studentParam}`)
             if (!res.ok) throw new Error('Failed to generate report')
             const blob = await res.blob()
             const url = URL.createObjectURL(blob)
@@ -72,7 +74,7 @@ function ReportsTab() {
                     <h2 className="text-2xl font-bold font-outfit">Reports & Exports</h2>
                     <p className="text-muted-foreground text-sm mt-1">Download CSV reports for bookings, earnings, and packages.</p>
                 </div>
-                <div className="flex items-center gap-3 bg-card border border-border rounded-2xl p-3">
+                <div className="flex flex-wrap items-center gap-3 bg-card border border-border rounded-2xl p-3">
                     <div className="flex items-center gap-2">
                         <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">From</label>
                         <input
@@ -91,6 +93,22 @@ function ReportsTab() {
                             onChange={e => setTo(e.target.value)}
                             className="text-sm border border-border rounded-lg px-3 py-1.5 bg-muted/50 focus:outline-none focus:ring-2 focus:ring-accent"
                         />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Student</label>
+                        <select
+                            value={studentId}
+                            onChange={e => setStudentId(e.target.value)}
+                            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-muted/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                        >
+                            <option value="all">All Students</option>
+                            {students.map(s => (
+                                <option key={s.id} value={s.id}>
+                                    {s.full_name || '(unnamed)'}{s.phone ? ` · ${s.phone}` : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <span className="text-[10px] text-muted-foreground italic">(Bookings only)</span>
                     </div>
                 </div>
             </div>
@@ -172,9 +190,10 @@ export default function AdminDashboard() {
     const [lessonEditLoading, setLessonEditLoading] = useState(false)
     const [lessonEditError, setLessonEditError] = useState<string | null>(null)
     const [editingUser, setEditingUser] = useState<any | null>(null)
-    const [userForm, setUserForm] = useState({ full_name: '', phone: '', address: '' })
+    const [userForm, setUserForm] = useState({ full_name: '', phone: '', address: '', gender: '', license_number: '', license_expiry: '' })
     const [userFormLoading, setUserFormLoading] = useState(false)
     const [userFormError, setUserFormError] = useState<string | null>(null)
+    const [selectedStudent, setSelectedStudent] = useState<any | null>(null)
     const [loading, setLoading] = useState(false)
     const [logoUrl, setLogoUrl] = useState<string>('')
     const [isUploadingLogo, setIsUploadingLogo] = useState(false)
@@ -186,7 +205,11 @@ export default function AdminDashboard() {
     const [hireBookingError, setHireBookingError] = useState<string | null>(null)
     const [hireBookingLoading, setHireBookingLoading] = useState(false)
     const [showPastBookings, setShowPastBookings] = useState(false)
+    const [bookingsExportFrom, setBookingsExportFrom] = useState('')
+    const [bookingsExportTo, setBookingsExportTo] = useState('')
+    const [bookingsExportLoading, setBookingsExportLoading] = useState(false)
     const [showPastHireBookings, setShowPastHireBookings] = useState(false)
+    const [hireBookingsView, setHireBookingsView] = useState<'list' | 'calendar'>('list')
     const [editingBooking, setEditingBooking] = useState<any | null>(null)
     const [bookingEditForm, setBookingEditForm] = useState({
         instructorId: '', lessonId: '', date: '', time: '',
@@ -433,6 +456,9 @@ const toggleLessonStatus = async (id: string, currentStatus: boolean) => {
             full_name: u.full_name || '',
             phone: u.phone || '',
             address: u.address || '',
+            gender: u.gender || '',
+            license_number: u.license_number || '',
+            license_expiry: u.license_expiry ? u.license_expiry.split('T')[0] : '',
         })
         setUserFormError(null)
     }
@@ -446,6 +472,9 @@ const toggleLessonStatus = async (id: string, currentStatus: boolean) => {
                 full_name: userForm.full_name,
                 phone: userForm.phone,
                 address: userForm.address,
+                gender: userForm.gender || null,
+                license_number: userForm.license_number || null,
+                license_expiry: userForm.license_expiry || null,
             }
             const res = await fetch(`/api/admin/users/${editingUser.id}`, {
                 method: 'PATCH',
@@ -944,10 +973,10 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                 <span className="font-medium">{calendarTooltip.props.timeRange}</span>
                             </div>
                         )}
-                        {calendarTooltip.props.lesson && (
+                        {(calendarTooltip.props.lesson || calendarTooltip.props.hireTitle) && (
                             <div className="flex gap-2">
-                                <span className="text-white/60 shrink-0 w-14">Lesson</span>
-                                <span className="font-medium">{calendarTooltip.props.lesson}</span>
+                                <span className="text-white/60 shrink-0 w-14">{calendarTooltip.props.hireTitle ? 'Hire' : 'Lesson'}</span>
+                                <span className="font-medium">{calendarTooltip.props.lesson || calendarTooltip.props.hireTitle}</span>
                             </div>
                         )}
                         {(() => {
@@ -1437,7 +1466,8 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                                     <p className="text-xs text-muted-foreground">{u.phone || 'No phone'}</p>
                                                 </td>
                                                 <td className="px-6 py-4 text-right space-x-2">
-                                                    <Button variant="ghost" size="sm" className="text-accent underline" onClick={() => openEditUser(u)}>Edit</Button>
+                                                    <Button variant="ghost" size="sm" className="text-accent underline" onClick={() => setSelectedStudent(u)}>View</Button>
+                                                    <Button variant="ghost" size="sm" className="text-blue-600 underline" onClick={() => openEditUser(u)}>Edit</Button>
                                                     <Button variant="ghost" size="sm" className="text-red-500 underline" onClick={() => deleteUser(u.id)}>Delete</Button>
                                                 </td>
                                             </tr>
@@ -1445,29 +1475,200 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                     </tbody>
                                 </table>
                             </div>
+
+                            {/* Student detail modal */}
+                            {selectedStudent && (
+                                <div
+                                    className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+                                    onClick={() => setSelectedStudent(null)}
+                                >
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        className="bg-card border border-border rounded-[2.5rem] p-8 max-w-lg w-full shadow-2xl space-y-6"
+                                        onClick={e => e.stopPropagation()}
+                                    >
+                                        {/* Header */}
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-14 h-14 rounded-full bg-accent/10 flex items-center justify-center text-accent text-xl font-bold shrink-0">
+                                                    {(selectedStudent.full_name || '?').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-xl font-bold font-outfit">{selectedStudent.full_name || 'Unknown'}</h3>
+                                                    <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full inline-block mt-1 ${
+                                                        selectedStudent.role === 'student' ? 'bg-accent/10 text-accent'
+                                                        : selectedStudent.role === 'instructor' ? 'bg-green-100 text-green-700'
+                                                        : 'bg-purple-100 text-purple-700'
+                                                    }`}>
+                                                        {selectedStudent.role}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => setSelectedStudent(null)}
+                                                className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-full hover:bg-muted"
+                                            >
+                                                <XCircle className="w-5 h-5" />
+                                            </button>
+                                        </div>
+
+                                        {/* Detail grid */}
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {[
+                                                { label: 'Phone', value: selectedStudent.phone },
+                                                { label: 'Address', value: selectedStudent.address, full: true },
+                                                { label: 'Gender', value: selectedStudent.gender ? selectedStudent.gender.charAt(0).toUpperCase() + selectedStudent.gender.slice(1) : '—' },
+                                                { label: 'Licence Number', value: selectedStudent.license_number || '—' },
+                                                { label: 'Licence Expiry', value: selectedStudent.license_expiry ? new Date(selectedStudent.license_expiry).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' },
+                                                { label: 'Credits Remaining', value: selectedStudent.role === 'student' ? String(selectedStudent.credits_remaining ?? 0) : null },
+                                                { label: 'Package Expiry', value: selectedStudent.package_expiry ? new Date(selectedStudent.package_expiry).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : null },
+                                                { label: 'Member Since', value: selectedStudent.updated_at ? new Date(selectedStudent.updated_at).toLocaleDateString('en-AU', { day: '2-digit', month: 'long', year: 'numeric' }) : null },
+                                                { label: 'User ID', value: selectedStudent.id, full: true },
+                                            ].filter(f => f.value != null).map(({ label, value, full }) => (
+                                                <div key={label} className={`bg-muted/50 rounded-2xl p-4 ${full ? 'col-span-2' : ''}`}>
+                                                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
+                                                    <p className="text-sm font-medium break-all">{value || '—'}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Bookings for this student */}
+                                        {(() => {
+                                            const studentBookings = allBookings
+                                                .filter(b => b.student_id === selectedStudent.id)
+                                                .sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
+                                                .slice(0, 5)
+                                            if (studentBookings.length === 0) return null
+                                            return (
+                                                <div className="space-y-2">
+                                                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Recent Bookings</p>
+                                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                                        {studentBookings.map((b: any) => {
+                                                            const lesson = lessons.find((l: any) => l.id === b.lesson_id)
+                                                            return (
+                                                                <div key={b.id} className="flex items-center justify-between bg-muted/40 rounded-xl px-4 py-2.5 text-sm">
+                                                                    <div>
+                                                                        <p className="font-medium">{lesson?.title || 'Lesson'}</p>
+                                                                        <p className="text-xs text-muted-foreground">
+                                                                            {new Date(b.start_time).toLocaleString('en-AU', { timeZone: 'Australia/Brisbane', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                                        </p>
+                                                                    </div>
+                                                                    <div className="flex flex-col items-end gap-1">
+                                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${b.status === 'scheduled' ? 'bg-accent/10 text-accent' : b.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                                                            {b.status}
+                                                                        </span>
+                                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${b.payment_status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                                            {b.payment_status}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )
+                                        })()}
+
+                                        {/* Actions */}
+                                        {selectedStudent.role === 'student' && (
+                                            <div className="flex gap-3 pt-2 border-t border-border">
+                                                <Button
+                                                    variant="accent"
+                                                    className="flex-1 rounded-2xl"
+                                                    onClick={() => { openEditUser(selectedStudent); setSelectedStudent(null) }}
+                                                >
+                                                    Adjust Credits
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    className="flex-1 rounded-2xl"
+                                                    onClick={() => { setActiveTab('bookings'); setSelectedStudent(null) }}
+                                                >
+                                                    All Bookings
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </motion.div>
+                                </div>
+                            )}
                         </>
                     )}
 
                     {activeTab === 'bookings' && (
                         <>
-                            <div className="flex justify-between items-center text-sm">
-                                <h2 className="text-2xl font-bold font-outfit">All Bookings</h2>
-                                <div className="flex items-center gap-3">
-                                    <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                            <div className="flex flex-col gap-4">
+                                <div className="flex justify-between items-center text-sm">
+                                    <h2 className="text-2xl font-bold font-outfit">All Bookings</h2>
+                                    <div className="flex items-center gap-3">
+                                        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                checked={showPastBookings}
+                                                onChange={e => setShowPastBookings(e.target.checked)}
+                                                className="rounded"
+                                            />
+                                            Show past bookings
+                                        </label>
+                                        <Button size="sm" variant="outline" className="rounded-xl gap-2" onClick={() => fetchAdminData()}>
+                                            Refresh
+                                        </Button>
+                                        <Button size="sm" className="rounded-xl gap-2" onClick={() => setShowManualBookingModal(true)}>
+                                            <Plus className="w-4 h-4" /> New Booking
+                                        </Button>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-3 bg-card border border-border rounded-2xl p-3 self-start">
+                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Export CSV</span>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-xs text-muted-foreground">From</label>
                                         <input
-                                            type="checkbox"
-                                            checked={showPastBookings}
-                                            onChange={e => setShowPastBookings(e.target.checked)}
-                                            className="rounded"
+                                            type="date"
+                                            value={bookingsExportFrom}
+                                            onChange={e => setBookingsExportFrom(e.target.value)}
+                                            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-muted/50 focus:outline-none focus:ring-2 focus:ring-accent"
                                         />
-                                        Show past bookings
-                                    </label>
-                                    <Button size="sm" variant="outline" className="rounded-xl gap-2" onClick={() => fetchAdminData()}>
-                                        Refresh
+                                    </div>
+                                    <span className="text-muted-foreground">—</span>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-xs text-muted-foreground">To</label>
+                                        <input
+                                            type="date"
+                                            value={bookingsExportTo}
+                                            onChange={e => setBookingsExportTo(e.target.value)}
+                                            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-muted/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                                        />
+                                    </div>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="rounded-xl gap-2"
+                                        isLoading={bookingsExportLoading}
+                                        onClick={async () => {
+                                            setBookingsExportLoading(true)
+                                            try {
+                                                const params = new URLSearchParams({ type: 'bookings' })
+                                                if (bookingsExportFrom) params.set('from', bookingsExportFrom)
+                                                if (bookingsExportTo) params.set('to', bookingsExportTo)
+                                                const res = await fetch(`/api/admin/reports?${params}`)
+                                                if (!res.ok) throw new Error('Failed to generate report')
+                                                const blob = await res.blob()
+                                                const url = URL.createObjectURL(blob)
+                                                const a = document.createElement('a')
+                                                a.href = url
+                                                a.download = res.headers.get('content-disposition')?.split('filename="')[1]?.replace('"', '') ?? 'bookings_report.csv'
+                                                a.click()
+                                                URL.revokeObjectURL(url)
+                                            } catch (err: any) {
+                                                alert('Download failed: ' + err.message)
+                                            } finally {
+                                                setBookingsExportLoading(false)
+                                            }
+                                        }}
+                                    >
+                                        <Download className="w-4 h-4" /> Download
                                     </Button>
-                                    <Button size="sm" className="rounded-xl gap-2" onClick={() => setShowManualBookingModal(true)}>
-                                        <Plus className="w-4 h-4" /> New Booking
-                                    </Button>
+                                    <span className="text-[10px] text-muted-foreground italic">Leave blank to export all dates</span>
                                 </div>
                             </div>
 
@@ -1575,15 +1776,21 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                     <p className="text-muted-foreground text-sm mt-1">Bookings where a student has hired a vehicle for their test.</p>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-                                        <input
-                                            type="checkbox"
-                                            checked={showPastHireBookings}
-                                            onChange={e => setShowPastHireBookings(e.target.checked)}
-                                            className="rounded"
-                                        />
-                                        Show past bookings
-                                    </label>
+                                    {hireBookingsView === 'list' && (
+                                        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                checked={showPastHireBookings}
+                                                onChange={e => setShowPastHireBookings(e.target.checked)}
+                                                className="rounded"
+                                            />
+                                            Show past bookings
+                                        </label>
+                                    )}
+                                    <div className="flex gap-1 bg-muted p-1 rounded-xl text-sm">
+                                        <button onClick={() => setHireBookingsView('list')} className={`px-3 py-1 rounded-lg font-bold transition-all ${hireBookingsView === 'list' ? 'bg-white shadow text-accent' : 'text-muted-foreground'}`}>List</button>
+                                        <button onClick={() => setHireBookingsView('calendar')} className={`px-3 py-1 rounded-lg font-bold transition-all ${hireBookingsView === 'calendar' ? 'bg-white shadow text-accent' : 'text-muted-foreground'}`}>Calendar</button>
+                                    </div>
                                     <Button size="sm" variant="outline" className="rounded-xl gap-2" onClick={() => fetchAdminData()}>
                                         Refresh
                                     </Button>
@@ -1744,6 +1951,97 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                 </div>
                             )}
 
+                            {hireBookingsView === 'calendar' && (
+                                <div className="rounded-2xl overflow-hidden border border-border hire-cal">
+                                    <style>{`.hire-cal .fc-timegrid-event-harness { inset-inline: 0 !important; }`}</style>
+                                    <FullCalendar
+                                        plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
+                                        initialView="timeGridWeek"
+                                        headerToolbar={{
+                                            left: 'prev,next today',
+                                            center: 'title',
+                                            right: 'timeGridDay,timeGridWeek,dayGridMonth',
+                                        }}
+                                        locale="en-AU"
+                                        dayHeaderFormat={{ day: '2-digit', month: '2-digit', omitCommas: true }}
+                                        titleFormat={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
+                                        allDaySlot={false}
+                                        slotMinTime="06:00:00"
+                                        slotMaxTime="21:00:00"
+                                        slotDuration="00:30:00"
+                                        slotLabelInterval="01:00"
+                                        slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: true }}
+                                        height="auto"
+                                        expandRows={true}
+                                        nowIndicator={true}
+                                        events={allBookings
+                                            .filter((b: any) => b.hire_id && b.status !== 'cancelled')
+                                            .map((b: any) => {
+                                                const student = allUsers.find((u: any) => u.id === b.student_id)
+                                                const hire = vehicleHires.find((h: any) => h.id === b.hire_id)
+                                                const isTruck = hire?.vehicle_type === 'truck'
+                                                const isPaid = b.payment_status === 'paid'
+                                                const bg = isTruck
+                                                    ? (isPaid ? '#f97316' : '#fb923c')
+                                                    : (isPaid ? '#3b82f6' : '#8b5cf6')
+                                                const border = isTruck
+                                                    ? (isPaid ? '#ea580c' : '#f97316')
+                                                    : (isPaid ? '#2563eb' : '#7c3aed')
+                                                const startLocal = new Date(b.start_time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Brisbane' })
+                                                const endLocal = new Date(b.end_time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Brisbane' })
+                                                return {
+                                                    id: `hire-${b.id}`,
+                                                    title: student?.full_name || 'Booked',
+                                                    start: b.start_time,
+                                                    end: b.end_time,
+                                                    backgroundColor: bg,
+                                                    borderColor: border,
+                                                    textColor: '#fff',
+                                                    extendedProps: {
+                                                        type: 'hire-booking',
+                                                        bookingId: b.id,
+                                                        student: student?.full_name,
+                                                        studentPhone: student?.phone,
+                                                        hireTitle: hire?.title,
+                                                        vehicleType: hire?.vehicle_type,
+                                                        status: b.status,
+                                                        payment: b.payment_status,
+                                                        pickupAddress: b.pickup_address,
+                                                        timeRange: `${startLocal} – ${endLocal}`,
+                                                    },
+                                                }
+                                            })}
+                                        eventContent={(arg) => {
+                                            const p = arg.event.extendedProps
+                                            return (
+                                                <div
+                                                    className="px-2 py-1.5 h-full overflow-hidden flex flex-col gap-0.5 cursor-pointer"
+                                                    onMouseEnter={(e) => {
+                                                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                                                        const tooltipWidth = 240
+                                                        const spaceRight = window.innerWidth - rect.right
+                                                        const x = spaceRight >= tooltipWidth + 12 ? rect.right + 8 : rect.left - tooltipWidth - 8
+                                                        setCalendarTooltip({ props: p, x, y: rect.top })
+                                                    }}
+                                                    onMouseLeave={() => setCalendarTooltip(null)}
+                                                >
+                                                    <div className="text-xs font-bold leading-tight truncate">{p.vehicleType === 'truck' ? '🚛' : '🚗'} {p.student}</div>
+                                                    <div className="text-[11px] font-medium opacity-95 truncate">{p.hireTitle}</div>
+                                                    <div className="text-[11px] font-semibold capitalize px-1.5 py-0.5 rounded-full bg-white/20 w-fit">
+                                                        {p.payment === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                                                    </div>
+                                                </div>
+                                            )
+                                        }}
+                                        eventClick={(info) => {
+                                            const booking = allBookings.find((b: any) => b.id === info.event.extendedProps.bookingId)
+                                            if (booking) openEditBooking(booking)
+                                        }}
+                                    />
+                                </div>
+                            )}
+
+                            {hireBookingsView === 'list' && (
                             <div className="bg-card border border-border rounded-[2.5rem] overflow-hidden shadow-sm">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
@@ -1826,6 +2124,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                     </tbody>
                                 </table>
                             </div>
+                            )}
                         </>
                     )}
 
@@ -2332,7 +2631,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                     )}
 
                     {activeTab === 'reports' && (
-                        <ReportsTab />
+                        <ReportsTab students={allUsers.filter(u => u.role === 'student')} />
                     )}
 
                     {activeTab === 'settings' && (
@@ -2419,6 +2718,7 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                             </div>
                         </div>
                     )}
+
                 </div>
 
             </div>
@@ -2870,6 +3170,19 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                         className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
                                     />
                                 </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Gender</label>
+                                    <select
+                                        value={userForm.gender}
+                                        onChange={e => setUserForm(f => ({ ...f, gender: e.target.value }))}
+                                        className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    >
+                                        <option value="">Not specified</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Address</label>
@@ -2880,6 +3193,27 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                                     placeholder="Home address"
                                     className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
                                 />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Licence Number</label>
+                                    <input
+                                        type="text"
+                                        value={userForm.license_number}
+                                        onChange={e => setUserForm(f => ({ ...f, license_number: e.target.value }))}
+                                        placeholder="e.g. 012345678"
+                                        className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Licence Expiry</label>
+                                    <input
+                                        type="date"
+                                        value={userForm.license_expiry}
+                                        onChange={e => setUserForm(f => ({ ...f, license_expiry: e.target.value }))}
+                                        className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/20"
+                                    />
+                                </div>
                             </div>
                         </div>
 

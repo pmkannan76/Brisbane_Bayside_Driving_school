@@ -30,27 +30,32 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const type = searchParams.get('type') // 'bookings' | 'earnings' | 'packages'
-    const from = searchParams.get('from') // YYYY-MM-DD
-    const to = searchParams.get('to')     // YYYY-MM-DD
+    const type = searchParams.get('type')      // 'bookings' | 'earnings' | 'packages'
+    const from = searchParams.get('from')      // YYYY-MM-DD
+    const to = searchParams.get('to')          // YYYY-MM-DD
+    const studentId = searchParams.get('studentId') // UUID or null
 
     const db = getServiceRoleClient()
     const fromDate = from ? new Date(from).toISOString() : new Date('2000-01-01').toISOString()
     const toDate = to ? new Date(to + 'T23:59:59').toISOString() : new Date().toISOString()
 
     if (type === 'bookings') {
-        const { data, error } = await db
+        let query = db
             .from('bookings')
             .select(`
                 id, start_time, end_time, status, payment_status, pickup_address,
                 vehicle_type, transmission_type, credits_used, created_at,
-                student:users!bookings_student_id_fkey(full_name, email, phone),
-                instructor:instructors!instructor_id(full_name, email),
+                student:users!bookings_student_id_fkey(full_name, email, phone, address, gender, license_number, license_expiry),
+                instructor:instructors!instructor_id(full_name, email, phone),
                 lesson:lessons!lesson_id(title, price, duration_minutes)
             `)
             .gte('start_time', fromDate)
             .lte('start_time', toDate)
             .order('start_time', { ascending: false })
+
+        if (studentId) query = query.eq('student_id', studentId)
+
+        const { data, error } = await query
 
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -61,6 +66,9 @@ export async function GET(request: NextRequest) {
             'Student Name': (b.student as any)?.full_name ?? '',
             'Student Email': (b.student as any)?.email ?? '',
             'Student Phone': (b.student as any)?.phone ?? '',
+            'Student Gender': (b.student as any)?.gender ?? '',
+            'Student Licence Number': (b.student as any)?.license_number ?? '',
+            'Student Licence Expiry': (b.student as any)?.license_expiry ? new Date((b.student as any).license_expiry).toLocaleDateString('en-AU') : '',
             'Instructor': (b.instructor as any)?.full_name ?? '',
             'Lesson': (b.lesson as any)?.title ?? '',
             'Duration (mins)': (b.lesson as any)?.duration_minutes ?? '',
