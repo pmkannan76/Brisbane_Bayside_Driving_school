@@ -323,6 +323,14 @@ function BookingPage() {
             const slotStartMs = slotStart.getTime()
             const slotEndMs = slotEnd.getTime()
 
+            // Check against unavailability (service, repairs, etc.)
+            const unavailConflict = hireBookings.find(b => b.isUnavailable && slotStartMs < new Date(b.end).getTime() && slotEndMs > new Date(b.start).getTime())
+            if (unavailConflict) {
+                const reason = unavailConflict.reason ? ` (${unavailConflict.reason})` : ''
+                setErrorMsg(`This vehicle is unavailable at the selected time${reason}. Please choose a different date or time.`)
+                return
+            }
+
             // Check against the actual booking (isBooked) first
             const bookedConflict = hireBookings.find(b => b.isBooked && slotStartMs < new Date(b.end).getTime() && slotEndMs > new Date(b.start).getTime())
             if (bookedConflict) {

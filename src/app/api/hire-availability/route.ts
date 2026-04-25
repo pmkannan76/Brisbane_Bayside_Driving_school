@@ -8,16 +8,16 @@ export async function GET(request: NextRequest) {
     if (!hireId) return NextResponse.json({ error: 'Missing hireId' }, { status: 400 })
 
     const db = getServiceRoleClient()
-    const { data, error } = await db
-        .from('bookings')
-        .select('id, start_time, end_time')
-        .eq('hire_id', hireId)
-        .eq('status', 'scheduled')
+    const [{ data, error }, { data: unavailData, error: unavailError }] = await Promise.all([
+        db.from('bookings').select('id, start_time, end_time').eq('hire_id', hireId).eq('status', 'scheduled'),
+        db.from('hire_unavailability').select('id, start_time, end_time, reason').eq('hire_id', hireId),
+    ])
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (unavailError) return NextResponse.json({ error: unavailError.message }, { status: 500 })
 
     // Return each booking plus a buffer block after it
-    const events = (data ?? []).flatMap((b: any) => {
+    const bookingEvents = (data ?? []).flatMap((b: any) => {
         const bookingEnd = new Date(b.end_time)
         const bufferEnd = new Date(bookingEnd.getTime() + BUFFER_MINUTES * 60_000)
 
@@ -41,5 +41,17 @@ export async function GET(request: NextRequest) {
         ]
     })
 
-    return NextResponse.json({ events, bufferMinutes: BUFFER_MINUTES })
+    const unavailEvents = (unavailData ?? []).map((u: any) => ({
+        id: `unavail-${u.id}`,
+        start: u.start_time,
+        end: u.end_time,
+        title: u.reason || 'Unavailable',
+        backgroundColor: '#6b7280',
+        borderColor: '#4b5563',
+        textColor: '#fff',
+        isUnavailable: true,
+        reason: u.reason,
+    }))
+
+    return NextResponse.json({ events: [...bookingEvents, ...unavailEvents], bufferMinutes: BUFFER_MINUTES })
 }

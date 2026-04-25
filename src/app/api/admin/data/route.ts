@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
         { data: allBookings },
         { data: settings },
         { data: vehicleHires },
+        { data: hireUnavailability },
     ] = await Promise.all([
         db.from('users').select('id, email, full_name, phone, address, gender, license_number, license_expiry').order('full_name', { ascending: true }),
         db.from('instructors').select('*').order('full_name', { ascending: true }),
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
         db.from('bookings').select('*, lesson:lessons(price)').order('start_time', { ascending: false }),
         db.from('settings').select('*'),
         db.from('vehicle_hires').select('*').order('created_at', { ascending: false }),
+        db.from('hire_unavailability').select('*').order('start_time', { ascending: true }),
     ])
 
     return NextResponse.json({
@@ -38,5 +40,6 @@ export async function GET(request: NextRequest) {
         allBookings: allBookings || [],
         settings: settings || [],
         vehicleHires: vehicleHires || [],
+        hireUnavailability: hireUnavailability || [],
     })
 }

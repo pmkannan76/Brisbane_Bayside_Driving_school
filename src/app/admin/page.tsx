@@ -210,6 +210,11 @@ export default function AdminDashboard() {
     const [bookingsExportLoading, setBookingsExportLoading] = useState(false)
     const [showPastHireBookings, setShowPastHireBookings] = useState(false)
     const [hireBookingsView, setHireBookingsView] = useState<'list' | 'calendar'>('list')
+    const [hireUnavailability, setHireUnavailability] = useState<any[]>([])
+    const [hireCalFilter, setHireCalFilter] = useState<string>('')
+    const [showHireBlockModal, setShowHireBlockModal] = useState(false)
+    const [hireBlockForm, setHireBlockForm] = useState({ start: '', end: '', reason: '' })
+    const [hireBlockLoading, setHireBlockLoading] = useState(false)
     const [editingBooking, setEditingBooking] = useState<any | null>(null)
     const [bookingEditForm, setBookingEditForm] = useState({
         instructorId: '', lessonId: '', date: '', time: '',
@@ -313,6 +318,7 @@ export default function AdminDashboard() {
             setAllBookings(allBookings)
             setInstructors(data.instructors || [])
             setVehicleHires(data.vehicleHires || [])
+            setHireUnavailability(data.hireUnavailability || [])
 
             setRecentUsers(
                 [...allUsers]
@@ -1952,92 +1958,236 @@ const handleAddLesson = async (e: React.FormEvent<HTMLFormElement>) => {
                             )}
 
                             {hireBookingsView === 'calendar' && (
-                                <div className="rounded-2xl overflow-hidden border border-border hire-cal">
-                                    <style>{`.hire-cal .fc-timegrid-event-harness { inset-inline: 0 !important; }`}</style>
-                                    <FullCalendar
-                                        plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
-                                        initialView="timeGridWeek"
-                                        headerToolbar={{
-                                            left: 'prev,next today',
-                                            center: 'title',
-                                            right: 'timeGridDay,timeGridWeek,dayGridMonth',
-                                        }}
-                                        locale="en-AU"
-                                        dayHeaderFormat={{ day: '2-digit', month: '2-digit', omitCommas: true }}
-                                        titleFormat={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
-                                        allDaySlot={false}
-                                        slotMinTime="06:00:00"
-                                        slotMaxTime="21:00:00"
-                                        slotDuration="00:30:00"
-                                        slotLabelInterval="01:00"
-                                        slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: true }}
-                                        height="auto"
-                                        expandRows={true}
-                                        nowIndicator={true}
-                                        events={allBookings
-                                            .filter((b: any) => b.hire_id && b.status !== 'cancelled')
-                                            .map((b: any) => {
-                                                const student = allUsers.find((u: any) => u.id === b.student_id)
-                                                const hire = vehicleHires.find((h: any) => h.id === b.hire_id)
-                                                const isTruck = hire?.vehicle_type === 'truck'
-                                                const isPaid = b.payment_status === 'paid'
-                                                const bg = isTruck
-                                                    ? (isPaid ? '#f97316' : '#fb923c')
-                                                    : (isPaid ? '#3b82f6' : '#8b5cf6')
-                                                const border = isTruck
-                                                    ? (isPaid ? '#ea580c' : '#f97316')
-                                                    : (isPaid ? '#2563eb' : '#7c3aed')
-                                                const startLocal = new Date(b.start_time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Brisbane' })
-                                                const endLocal = new Date(b.end_time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Brisbane' })
-                                                return {
-                                                    id: `hire-${b.id}`,
-                                                    title: student?.full_name || 'Booked',
-                                                    start: b.start_time,
-                                                    end: b.end_time,
-                                                    backgroundColor: bg,
-                                                    borderColor: border,
-                                                    textColor: '#fff',
-                                                    extendedProps: {
-                                                        type: 'hire-booking',
-                                                        bookingId: b.id,
-                                                        student: student?.full_name,
-                                                        studentPhone: student?.phone,
-                                                        hireTitle: hire?.title,
-                                                        vehicleType: hire?.vehicle_type,
-                                                        status: b.status,
-                                                        payment: b.payment_status,
-                                                        pickupAddress: b.pickup_address,
-                                                        timeRange: `${startLocal} – ${endLocal}`,
-                                                    },
-                                                }
-                                            })}
-                                        eventContent={(arg) => {
-                                            const p = arg.event.extendedProps
-                                            return (
-                                                <div
-                                                    className="px-2 py-1.5 h-full overflow-hidden flex flex-col gap-0.5 cursor-pointer"
-                                                    onMouseEnter={(e) => {
-                                                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                                                        const tooltipWidth = 240
-                                                        const spaceRight = window.innerWidth - rect.right
-                                                        const x = spaceRight >= tooltipWidth + 12 ? rect.right + 8 : rect.left - tooltipWidth - 8
-                                                        setCalendarTooltip({ props: p, x, y: rect.top })
-                                                    }}
-                                                    onMouseLeave={() => setCalendarTooltip(null)}
-                                                >
-                                                    <div className="text-xs font-bold leading-tight truncate">{p.vehicleType === 'truck' ? '🚛' : '🚗'} {p.student}</div>
-                                                    <div className="text-[11px] font-medium opacity-95 truncate">{p.hireTitle}</div>
-                                                    <div className="text-[11px] font-semibold capitalize px-1.5 py-0.5 rounded-full bg-white/20 w-fit">
-                                                        {p.payment === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                                <div className="space-y-3">
+                                    {/* Hire filter + legend */}
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <select
+                                            value={hireCalFilter}
+                                            onChange={e => setHireCalFilter(e.target.value)}
+                                            className="text-sm bg-muted border border-border rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-accent"
+                                        >
+                                            <option value="">All vehicles</option>
+                                            {vehicleHires.filter((h: any) => h.is_active).map((h: any) => (
+                                                <option key={h.id} value={h.id}>{h.vehicle_type === 'truck' ? '🚛' : '🚗'} {h.title}</option>
+                                            ))}
+                                        </select>
+                                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> Car (paid)</span>
+                                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-purple-500 inline-block" /> Car (pending)</span>
+                                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-orange-500 inline-block" /> Truck</span>
+                                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Unavailable</span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground ml-auto italic">Select a time slot to mark unavailable</p>
+                                    </div>
+
+                                    {/* Add block modal */}
+                                    {showHireBlockModal && (
+                                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                                            <div className="bg-card border border-border rounded-[2.5rem] shadow-2xl w-full max-w-md p-8 space-y-5">
+                                                <div className="flex justify-between items-center">
+                                                    <h3 className="text-xl font-bold font-outfit">Mark Unavailable</h3>
+                                                    <button onClick={() => setShowHireBlockModal(false)} className="text-muted-foreground hover:text-foreground text-2xl leading-none">✕</button>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Vehicle</label>
+                                                    <select
+                                                        value={hireCalFilter}
+                                                        onChange={e => setHireCalFilter(e.target.value)}
+                                                        className="w-full bg-muted border border-border p-2 rounded-lg text-sm"
+                                                    >
+                                                        <option value="">All vehicles (blocks all)</option>
+                                                        {vehicleHires.filter((h: any) => h.is_active).map((h: any) => (
+                                                            <option key={h.id} value={h.id}>{h.vehicle_type === 'truck' ? '🚛' : '🚗'} {h.title}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">From</label>
+                                                        <input type="datetime-local" value={hireBlockForm.start} onChange={e => setHireBlockForm(f => ({ ...f, start: e.target.value }))} className="w-full bg-muted border border-border p-2 rounded-lg text-sm" />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">To</label>
+                                                        <input type="datetime-local" value={hireBlockForm.end} onChange={e => setHireBlockForm(f => ({ ...f, end: e.target.value }))} className="w-full bg-muted border border-border p-2 rounded-lg text-sm" />
                                                     </div>
                                                 </div>
-                                            )
-                                        }}
-                                        eventClick={(info) => {
-                                            const booking = allBookings.find((b: any) => b.id === info.event.extendedProps.bookingId)
-                                            if (booking) openEditBooking(booking)
-                                        }}
-                                    />
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Reason (optional)</label>
+                                                    <input value={hireBlockForm.reason} onChange={e => setHireBlockForm(f => ({ ...f, reason: e.target.value }))} placeholder="e.g. Service, Repairs, RWC…" className="w-full bg-muted border border-border p-2 rounded-lg text-sm" />
+                                                </div>
+                                                <div className="flex justify-end gap-3 pt-1">
+                                                    <Button type="button" variant="ghost" onClick={() => setShowHireBlockModal(false)}>Cancel</Button>
+                                                    <Button
+                                                        isLoading={hireBlockLoading}
+                                                        onClick={async () => {
+                                                            if (!hireBlockForm.start || !hireBlockForm.end) return
+                                                            setHireBlockLoading(true)
+                                                            try {
+                                                                const targetHires = hireCalFilter
+                                                                    ? [hireCalFilter]
+                                                                    : vehicleHires.filter((h: any) => h.is_active).map((h: any) => h.id)
+                                                                await Promise.all(targetHires.map((hireId: string) =>
+                                                                    fetch(`/api/admin/hires/${hireId}/unavailability`, {
+                                                                        method: 'POST',
+                                                                        headers: { 'Content-Type': 'application/json' },
+                                                                        body: JSON.stringify({
+                                                                            start_time: new Date(hireBlockForm.start).toISOString(),
+                                                                            end_time: new Date(hireBlockForm.end).toISOString(),
+                                                                            reason: hireBlockForm.reason || null,
+                                                                        }),
+                                                                    })
+                                                                ))
+                                                                await fetchAdminData()
+                                                                setShowHireBlockModal(false)
+                                                                setHireBlockForm({ start: '', end: '', reason: '' })
+                                                            } finally {
+                                                                setHireBlockLoading(false)
+                                                            }
+                                                        }}
+                                                        className="bg-red-500 hover:bg-red-600 text-white"
+                                                    >
+                                                        Block Period
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="rounded-2xl overflow-hidden border border-border hire-cal">
+                                        <style>{`.hire-cal .fc-timegrid-event-harness { inset-inline: 0 !important; }`}</style>
+                                        <FullCalendar
+                                            plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
+                                            initialView="timeGridWeek"
+                                            headerToolbar={{
+                                                left: 'prev,next today',
+                                                center: 'title',
+                                                right: 'timeGridDay,timeGridWeek,dayGridMonth',
+                                            }}
+                                            locale="en-AU"
+                                            dayHeaderFormat={{ day: '2-digit', month: '2-digit', omitCommas: true }}
+                                            titleFormat={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
+                                            allDaySlot={false}
+                                            slotMinTime="06:00:00"
+                                            slotMaxTime="21:00:00"
+                                            slotDuration="00:30:00"
+                                            slotLabelInterval="01:00"
+                                            slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: true }}
+                                            height="auto"
+                                            expandRows={true}
+                                            nowIndicator={true}
+                                            selectable={true}
+                                            selectMirror={true}
+                                            select={(info) => {
+                                                const toLocal = (d: Date) => {
+                                                    const off = d.getTimezoneOffset()
+                                                    return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16)
+                                                }
+                                                setHireBlockForm({ start: toLocal(info.start), end: toLocal(info.end), reason: '' })
+                                                setShowHireBlockModal(true)
+                                            }}
+                                            events={[
+                                                // Bookings
+                                                ...allBookings
+                                                    .filter((b: any) => b.hire_id && b.status !== 'cancelled' && (!hireCalFilter || b.hire_id === hireCalFilter))
+                                                    .map((b: any) => {
+                                                        const student = allUsers.find((u: any) => u.id === b.student_id)
+                                                        const hire = vehicleHires.find((h: any) => h.id === b.hire_id)
+                                                        const isTruck = hire?.vehicle_type === 'truck'
+                                                        const isPaid = b.payment_status === 'paid'
+                                                        const bg = isTruck ? (isPaid ? '#f97316' : '#fb923c') : (isPaid ? '#3b82f6' : '#8b5cf6')
+                                                        const border = isTruck ? (isPaid ? '#ea580c' : '#f97316') : (isPaid ? '#2563eb' : '#7c3aed')
+                                                        const startLocal = new Date(b.start_time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Brisbane' })
+                                                        const endLocal = new Date(b.end_time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Brisbane' })
+                                                        return {
+                                                            id: `hire-${b.id}`,
+                                                            title: student?.full_name || 'Booked',
+                                                            start: b.start_time,
+                                                            end: b.end_time,
+                                                            backgroundColor: bg,
+                                                            borderColor: border,
+                                                            textColor: '#fff',
+                                                            extendedProps: {
+                                                                type: 'hire-booking',
+                                                                bookingId: b.id,
+                                                                student: student?.full_name,
+                                                                studentPhone: student?.phone,
+                                                                hireTitle: hire?.title,
+                                                                vehicleType: hire?.vehicle_type,
+                                                                status: b.status,
+                                                                payment: b.payment_status,
+                                                                pickupAddress: b.pickup_address,
+                                                                timeRange: `${startLocal} – ${endLocal}`,
+                                                            },
+                                                        }
+                                                    }),
+                                                // Unavailability blocks
+                                                ...hireUnavailability
+                                                    .filter((u: any) => !hireCalFilter || u.hire_id === hireCalFilter)
+                                                    .map((u: any) => {
+                                                        const hire = vehicleHires.find((h: any) => h.id === u.hire_id)
+                                                        return {
+                                                            id: `unavail-${u.id}`,
+                                                            title: u.reason || 'Unavailable',
+                                                            start: u.start_time,
+                                                            end: u.end_time,
+                                                            backgroundColor: '#ef4444',
+                                                            borderColor: '#dc2626',
+                                                            textColor: '#fff',
+                                                            extendedProps: {
+                                                                type: 'unavailability',
+                                                                unavailId: u.id,
+                                                                hireId: u.hire_id,
+                                                                hireTitle: hire?.title,
+                                                                reason: u.reason,
+                                                            },
+                                                        }
+                                                    }),
+                                            ]}
+                                            eventContent={(arg) => {
+                                                const p = arg.event.extendedProps
+                                                if (p.type === 'unavailability') {
+                                                    return (
+                                                        <div className="px-2 py-1.5 h-full overflow-hidden flex flex-col gap-0.5 cursor-pointer">
+                                                            <div className="text-xs font-bold leading-tight truncate">🚫 {p.hireTitle}</div>
+                                                            <div className="text-[11px] opacity-90 truncate">{p.reason || 'Unavailable'}</div>
+                                                        </div>
+                                                    )
+                                                }
+                                                return (
+                                                    <div
+                                                        className="px-2 py-1.5 h-full overflow-hidden flex flex-col gap-0.5 cursor-pointer"
+                                                        onMouseEnter={(e) => {
+                                                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                                                            const tooltipWidth = 240
+                                                            const spaceRight = window.innerWidth - rect.right
+                                                            const x = spaceRight >= tooltipWidth + 12 ? rect.right + 8 : rect.left - tooltipWidth - 8
+                                                            setCalendarTooltip({ props: p, x, y: rect.top })
+                                                        }}
+                                                        onMouseLeave={() => setCalendarTooltip(null)}
+                                                    >
+                                                        <div className="text-xs font-bold leading-tight truncate">{p.vehicleType === 'truck' ? '🚛' : '🚗'} {p.student}</div>
+                                                        <div className="text-[11px] font-medium opacity-95 truncate">{p.hireTitle}</div>
+                                                        <div className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-white/20 w-fit">
+                                                            {p.payment === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                                                        </div>
+                                                    </div>
+                                                )
+                                            }}
+                                            eventClick={(info) => {
+                                                const p = info.event.extendedProps
+                                                if (p.type === 'unavailability') {
+                                                    const hire = vehicleHires.find((h: any) => h.id === p.hireId)
+                                                    if (confirm(`Remove unavailability block for "${hire?.title || 'vehicle'}"${p.reason ? ` (${p.reason})` : ''}?`)) {
+                                                        fetch(`/api/admin/hires/${p.hireId}/unavailability/${p.unavailId}`, { method: 'DELETE' })
+                                                            .then(() => fetchAdminData())
+                                                    }
+                                                    return
+                                                }
+                                                const booking = allBookings.find((b: any) => b.id === p.bookingId)
+                                                if (booking) openEditBooking(booking)
+                                            }}
+                                        />
+                                    </div>
                                 </div>
                             )}
 
