@@ -7,12 +7,11 @@ const stripe = stripeBase ? new Stripe(stripeBase, {
     apiVersion: '2026-02-25.clover',
 }) : null
 
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
 export async function POST(req: Request) {
+    const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
     try {
         const { packageId, studentId } = await req.json()
 

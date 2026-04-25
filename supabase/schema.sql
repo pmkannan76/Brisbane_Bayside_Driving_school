@@ -447,3 +447,14 @@ alter table public.availability alter column day_of_week drop not null;
 
 -- [2026-04-13] Availability type: 'available' (default) or 'blocked' (not-available override)
 alter table public.availability add column if not exists type text default 'available' check (type in ('available', 'blocked'));
+
+-- [2026-04-21] Hire vehicle unavailability (service, repairs, etc.)
+create table if not exists public.hire_unavailability (
+  id uuid default gen_random_uuid() primary key,
+  hire_id uuid references public.vehicle_hires(id) on delete cascade not null,
+  start_time timestamp with time zone not null,
+  end_time timestamp with time zone not null,
+  reason text,
+  created_at timestamp with time zone default timezone('utc'::text, now())
+);
+alter table public.hire_unavailability enable row level security;

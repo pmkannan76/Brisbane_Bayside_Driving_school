@@ -282,14 +282,32 @@ function BookingPage() {
 
         // Availability window check
         if (instructorAvailability.length > 0) {
+            const slotDate = slotStart.toISOString().split('T')[0]
             const dayOfWeek = slotStart.getDay()
             const slotStartHHMM = slotStart.toTimeString().slice(0, 5)
             const slotEndHHMM = slotEnd.toTimeString().slice(0, 5)
 
-            const withinAvailability = instructorAvailability.some(a => {
-                if (a.day_of_week !== dayOfWeek) return false
+            // 1. Check blocked entries first (specific-date or recurring)
+            const isBlocked = instructorAvailability.some(a => {
+                if (a.type !== 'blocked') return false
                 const avStart = a.start_time.slice(0, 5)
                 const avEnd = a.end_time.slice(0, 5)
+                const overlaps = slotStartHHMM < avEnd && slotEndHHMM > avStart
+                if (a.specific_date) return a.specific_date === slotDate && overlaps
+                return a.day_of_week === dayOfWeek && overlaps
+            })
+            if (isBlocked) {
+                setErrorMsg("This instructor has marked themselves as unavailable at this time. Please choose a different time or instructor.")
+                return
+            }
+
+            // 2. Check the slot falls within an available window
+            const availableSlots = instructorAvailability.filter(a => !a.type || a.type === 'available')
+            const withinAvailability = availableSlots.some(a => {
+                const avStart = a.start_time.slice(0, 5)
+                const avEnd = a.end_time.slice(0, 5)
+                if (a.specific_date) return a.specific_date === slotDate && slotStartHHMM >= avStart && slotEndHHMM <= avEnd
+                if (a.day_of_week !== dayOfWeek) return false
                 return slotStartHHMM >= avStart && slotEndHHMM <= avEnd
             })
 
@@ -304,6 +322,14 @@ function BookingPage() {
         if (isHireOnlyMode) {
             const slotStartMs = slotStart.getTime()
             const slotEndMs = slotEnd.getTime()
+
+            // Check against unavailability (service, repairs, etc.)
+            const unavailConflict = hireBookings.find(b => b.isUnavailable && slotStartMs < new Date(b.end).getTime() && slotEndMs > new Date(b.start).getTime())
+            if (unavailConflict) {
+                const reason = unavailConflict.reason ? ` (${unavailConflict.reason})` : ''
+                setErrorMsg(`This vehicle is unavailable at the selected time${reason}. Please choose a different date or time.`)
+                return
+            }
 
             // Check against the actual booking (isBooked) first
             const bookedConflict = hireBookings.find(b => b.isBooked && slotStartMs < new Date(b.end).getTime() && slotEndMs > new Date(b.start).getTime())
@@ -532,11 +558,48 @@ function BookingPage() {
                     backgroundColor: '#3b82f6',
                     className: 'selected-slot'
                 }))
-                const businessHours = instructorAvailability.map(a => ({
-                    daysOfWeek: [a.day_of_week],
-                    startTime: a.start_time.slice(0, 5),
-                    endTime: a.end_time.slice(0, 5),
-                }))
+                // Only recurring available slots drive FullCalendar businessHours highlight
+                const businessHours = instructorAvailability
+                    .filter(a => (!a.type || a.type === 'available') && !a.specific_date && a.day_of_week != null)
+                    .map(a => ({
+                        daysOfWeek: [a.day_of_week],
+                        startTime: a.start_time.slice(0, 5),
+                        endTime: a.end_time.slice(0, 5),
+                    }))
+
+                // Blocked slots shown as red background events so students can see unavailable time
+                const blockedEvents = instructorAvailability
+                    .filter(a => a.type === 'blocked')
+                    .map(a => {
+                        if (a.specific_date) {
+                            return {
+                                start: `${a.specific_date}T${a.start_time.slice(0, 5)}`,
+                                end: `${a.specific_date}T${a.end_time.slice(0, 5)}`,
+                                display: 'background',
+                                backgroundColor: '#fca5a5',
+                                title: 'Unavailable',
+                            }
+                        }
+                        // Recurring blocked — FullCalendar doesn't directly support recurring background events
+                        // so we generate them for the visible range (±4 weeks)
+                        const events = []
+                        const now = new Date()
+                        const start = new Date(now); start.setDate(now.getDate() - 28)
+                        for (let d = new Date(start); d <= new Date(now.getTime() + 28 * 86400000); d.setDate(d.getDate() + 1)) {
+                            if (d.getDay() === a.day_of_week) {
+                                const ds = d.toISOString().split('T')[0]
+                                events.push({
+                                    start: `${ds}T${a.start_time.slice(0, 5)}`,
+                                    end: `${ds}T${a.end_time.slice(0, 5)}`,
+                                    display: 'background',
+                                    backgroundColor: '#fca5a5',
+                                    title: 'Unavailable',
+                                })
+                            }
+                        }
+                        return events
+                    })
+                    .flat()
                 const allSlotsSelected = selectedSlots.length === maxSlots
                 const showTracker = isPackageLesson
 
@@ -590,7 +653,7 @@ function BookingPage() {
                                     slotMaxTime="19:00:00"
                                     height="auto"
                                     dateClick={handleDateClick}
-                                    events={isHireNoInstructor ? [...hireBookings, ...selectedEvents] : [...instructorBookings, ...selectedEvents]}
+                                    events={isHireNoInstructor ? [...hireBookings, ...selectedEvents] : [...instructorBookings, ...blockedEvents, ...selectedEvents]}
                                     businessHours={isHireNoInstructor
                                         ? { daysOfWeek: [0, 1, 2, 3, 4, 5, 6], startTime: '07:00', endTime: '19:00' }
                                         : businessHours}
