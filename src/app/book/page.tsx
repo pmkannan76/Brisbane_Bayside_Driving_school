@@ -53,6 +53,14 @@ function BookingPage() {
     const [availabilityLoading, setAvailabilityLoading] = useState(false)
     const [pickupAddress, setPickupAddress] = useState('')
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
+    const [isMobile, setIsMobile] = useState(false)
+
+    useEffect(() => {
+        const check = () => setIsMobile(window.innerWidth < 768)
+        check()
+        window.addEventListener('resize', check)
+        return () => window.removeEventListener('resize', check)
+    }, [])
 
     useEffect(() => {
         if (!loading && lessons.length > 0 && instructors.length > 0) {
@@ -282,37 +290,50 @@ function BookingPage() {
 
         // Availability window check
         if (instructorAvailability.length > 0) {
-            const slotDate = slotStart.toISOString().split('T')[0]
-            const dayOfWeek = slotStart.getDay()
-            const slotStartHHMM = slotStart.toTimeString().slice(0, 5)
-            const slotEndHHMM = slotEnd.toTimeString().slice(0, 5)
+            // Derive date/time in Brisbane local time (UTC+10, no DST in QLD)
+            // Using UTC+10 offset directly avoids browser-timezone dependency.
+            const BRISBANE_OFFSET_MS = 10 * 60 * 60 * 1000
+            const slotStartBne = new Date(slotStart.getTime() + BRISBANE_OFFSET_MS)
+            const slotEndBne = new Date(slotEnd.getTime() + BRISBANE_OFFSET_MS)
+            const slotDate = slotStartBne.toISOString().slice(0, 10)          // "2026-04-28"
+            const dayOfWeek = slotStartBne.getUTCDay()                         // 2 = Tuesday
+            const slotStartHHMM = slotStartBne.toISOString().slice(11, 16)    // "07:00"
+            const slotEndHHMM = slotEndBne.toISOString().slice(11, 16)        // "08:00"
 
-            // 1. Check blocked entries first (specific-date or recurring)
-            const isBlocked = instructorAvailability.some(a => {
-                if (a.type !== 'blocked') return false
+            // Normalise specific_date to YYYY-MM-DD regardless of DB format
+            const normaliseDate = (d: string | null) => d ? d.slice(0, 10) : null
+
+            // 1. Blocked check — specific_date entries override recurring (same priority as available-slots API)
+            const blockedSlots = instructorAvailability.filter(a => a.type === 'blocked')
+            const specificDateBlocked = blockedSlots.filter(a => normaliseDate(a.specific_date) === slotDate)
+            const blockedToCheck = specificDateBlocked.length > 0
+                ? specificDateBlocked
+                : blockedSlots.filter(a => !a.specific_date && Number(a.day_of_week) === dayOfWeek)
+            const isBlocked = blockedToCheck.some(a => {
                 const avStart = a.start_time.slice(0, 5)
                 const avEnd = a.end_time.slice(0, 5)
-                const overlaps = slotStartHHMM < avEnd && slotEndHHMM > avStart
-                if (a.specific_date) return a.specific_date === slotDate && overlaps
-                return a.day_of_week === dayOfWeek && overlaps
+                return slotStartHHMM < avEnd && slotEndHHMM > avStart
             })
             if (isBlocked) {
                 setErrorMsg("This instructor has marked themselves as unavailable at this time. Please choose a different time or instructor.")
                 return
             }
 
-            // 2. Check the slot falls within an available window
+            // 2. Available window check — specific_date entries override recurring
             const availableSlots = instructorAvailability.filter(a => !a.type || a.type === 'available')
-            const withinAvailability = availableSlots.some(a => {
+            const specificDateAvailable = availableSlots.filter(a => normaliseDate(a.specific_date) === slotDate)
+            const windowsToCheck = specificDateAvailable.length > 0
+                ? specificDateAvailable
+                : availableSlots.filter(a => !a.specific_date && Number(a.day_of_week) === dayOfWeek)
+            const withinAvailability = windowsToCheck.some(a => {
                 const avStart = a.start_time.slice(0, 5)
                 const avEnd = a.end_time.slice(0, 5)
-                if (a.specific_date) return a.specific_date === slotDate && slotStartHHMM >= avStart && slotEndHHMM <= avEnd
-                if (a.day_of_week !== dayOfWeek) return false
                 return slotStartHHMM >= avStart && slotEndHHMM <= avEnd
             })
-
             if (!withinAvailability) {
-                setErrorMsg("Selected time is outside this instructor's available hours. Please click within the highlighted hours.")
+                setErrorMsg(windowsToCheck.length === 0
+                    ? "This instructor has no availability configured for this date. Please choose a different date."
+                    : "Selected time is outside this instructor's available hours. Please click within the highlighted green windows.")
                 return
             }
         }
@@ -434,30 +455,30 @@ function BookingPage() {
         switch (currentStep) {
             case 0:
                 return (
-                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-                        {/* Mode tabs */}
-                        <div className="flex gap-2 bg-muted p-1 rounded-2xl w-fit">
+                    <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4">
+                        {/* Mode tabs — full-width on mobile */}
+                        <div className="flex gap-2 bg-muted p-1 rounded-2xl w-full sm:w-fit">
                             <button
                                 onClick={() => { setBookingMode('lesson'); setSelectedHire(null); setNeedsInstructor(false) }}
-                                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${bookingMode === 'lesson' ? 'bg-white shadow text-accent' : 'text-muted-foreground hover:text-foreground'}`}
+                                className={`flex-1 sm:flex-none px-4 sm:px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${bookingMode === 'lesson' ? 'bg-white shadow text-accent' : 'text-muted-foreground hover:text-foreground'}`}
                             >
                                 Book a Lesson
                             </button>
                             <button
                                 onClick={() => { setBookingMode('hire'); setSelectedLesson(null); setNeedsInstructor(false) }}
-                                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${bookingMode === 'hire' ? 'bg-white shadow text-accent' : 'text-muted-foreground hover:text-foreground'}`}
+                                className={`flex-1 sm:flex-none px-4 sm:px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${bookingMode === 'hire' ? 'bg-white shadow text-accent' : 'text-muted-foreground hover:text-foreground'}`}
                             >
                                 Hire a Vehicle for Test
                             </button>
                         </div>
 
                         {bookingMode === 'lesson' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                                 {lessons.map(lesson => (
                                     <button
                                         key={lesson.id}
                                         onClick={() => { setSelectedLesson(lesson); handleNext(); }}
-                                        className={`p-8 rounded-[2rem] border-2 text-left transition-all space-y-4 ${selectedLesson?.id === lesson.id ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'border-border bg-card hover:border-accent/40'}`}
+                                        className={`p-6 sm:p-7 md:p-8 rounded-[2rem] border-2 text-left transition-all space-y-4 ${selectedLesson?.id === lesson.id ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'border-border bg-card hover:border-accent/40'}`}
                                     >
                                         <div className="bg-accent/10 w-12 h-12 rounded-xl flex items-center justify-center text-accent">
                                             <Clock className="w-6 h-6" />
@@ -476,7 +497,7 @@ function BookingPage() {
                         )}
 
                         {bookingMode === 'hire' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                                 {hires.length === 0 && (
                                     <p className="text-muted-foreground text-sm col-span-3">No hire options available yet.</p>
                                 )}
@@ -491,7 +512,7 @@ function BookingPage() {
                                             fetchHireBookings(hire.id)
                                             setCurrentStep(2)
                                         }}
-                                        className={`p-8 rounded-[2rem] border-2 text-left transition-all space-y-4 ${selectedHire?.id === hire.id ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'border-border bg-card hover:border-accent/40'}`}
+                                        className={`p-6 sm:p-7 md:p-8 rounded-[2rem] border-2 text-left transition-all space-y-4 ${selectedHire?.id === hire.id ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'border-border bg-card hover:border-accent/40'}`}
                                     >
                                         <div className="bg-accent/10 w-12 h-12 rounded-xl flex items-center justify-center text-2xl">
                                             {hire.vehicle_type === 'truck' ? '🚛' : '🚗'}
@@ -512,7 +533,7 @@ function BookingPage() {
                 )
             case 1:
                 return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-right-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 animate-in fade-in slide-in-from-right-4">
                         {instructors.map(inst => (
                             <button
                                 key={inst.id}
@@ -521,20 +542,20 @@ function BookingPage() {
                                     fetchInstructorAvailability(inst.id);
                                     handleNext();
                                 }}
-                                className={`p-8 rounded-[2.5rem] border-2 text-left transition-all flex items-center gap-8 ${selectedInstructor?.id === inst.id ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'border-border bg-card hover:border-accent/40'}`}
+                                className={`p-5 sm:p-7 md:p-8 rounded-[2.5rem] border-2 text-left transition-all flex items-center gap-5 sm:gap-7 md:gap-8 ${selectedInstructor?.id === inst.id ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'border-border bg-card hover:border-accent/40'}`}
                             >
                                 {inst.avatar_url ? (
-                                    <img src={inst.avatar_url} alt={inst.full_name} className="w-24 h-24 rounded-full border-4 border-white shadow-lg object-cover" />
+                                    <img src={inst.avatar_url} alt={inst.full_name} className="w-20 h-20 sm:w-22 sm:h-22 md:w-24 md:h-24 rounded-full border-4 border-white shadow-lg object-cover shrink-0" />
                                 ) : (
-                                    <div className="w-24 h-24 rounded-full border-4 border-white shadow-lg bg-accent/10 flex items-center justify-center text-accent text-2xl font-bold">
+                                    <div className="w-20 h-20 sm:w-22 sm:h-22 md:w-24 md:h-24 rounded-full border-4 border-white shadow-lg bg-accent/10 flex items-center justify-center text-accent text-xl sm:text-2xl font-bold shrink-0">
                                         {inst.full_name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
                                     </div>
                                 )}
-                                <div className="space-y-3">
+                                <div className="space-y-2 sm:space-y-3 min-w-0">
                                     <div className="space-y-1">
-                                        <h3 className="text-2xl font-bold">{inst.full_name}</h3>
+                                        <h3 className="text-xl sm:text-2xl font-bold truncate">{inst.full_name}</h3>
                                         <div className="flex items-center gap-2 text-sm text-secondary font-bold">
-                                            <Star className="w-4 h-4 fill-secondary" /> {inst.rating || '5.0'} • {inst.experience_years || '0'} exp
+                                            <Star className="w-4 h-4 fill-secondary shrink-0" /> {inst.rating || '5.0'} • {inst.experience_years || '0'} exp
                                         </div>
                                     </div>
                                     <p className="text-sm text-muted-foreground line-clamp-2">{inst.bio}</p>
@@ -565,6 +586,18 @@ function BookingPage() {
                         daysOfWeek: [a.day_of_week],
                         startTime: a.start_time.slice(0, 5),
                         endTime: a.end_time.slice(0, 5),
+                    }))
+
+                // Specific-date available windows shown as green background events.
+                // When all entries are specific_date (no recurring businessHours), this gives
+                // the user a clear visual of exactly which days/times are configured.
+                const specificDateAvailableEvents = instructorAvailability
+                    .filter(a => (!a.type || a.type === 'available') && a.specific_date)
+                    .map(a => ({
+                        start: `${a.specific_date.slice(0, 10)}T${a.start_time.slice(0, 5)}`,
+                        end: `${a.specific_date.slice(0, 10)}T${a.end_time.slice(0, 5)}`,
+                        display: 'background',
+                        backgroundColor: '#bbf7d0',
                     }))
 
                 // Blocked slots shown as red background events so students can see unavailable time
@@ -643,17 +676,20 @@ function BookingPage() {
                                 </p>
                                 <FullCalendar
                                     plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-                                    initialView="timeGridWeek"
-                                    headerToolbar={{ left: 'prev,next today', center: 'title', right: 'timeGridWeek,timeGridDay' }}
+                                    key={isMobile ? 'mobile' : 'desktop'}
+                                    initialView={isMobile ? 'timeGridDay' : 'timeGridWeek'}
+                                    headerToolbar={isMobile
+                                        ? { left: 'prev,next', center: 'title', right: 'today' }
+                                        : { left: 'prev,next today', center: 'title', right: 'timeGridWeek,timeGridDay' }}
                                     locale="en-AU"
-                                    dayHeaderFormat={{ day: '2-digit', month: '2-digit', omitCommas: true }}
-                                    titleFormat={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
+                                    dayHeaderFormat={isMobile ? { weekday: 'long' } : { day: '2-digit', month: '2-digit', omitCommas: true }}
+                                    titleFormat={isMobile ? { weekday: 'long', day: 'numeric', month: 'short' } : { day: '2-digit', month: '2-digit', year: 'numeric' }}
                                     allDaySlot={false}
                                     slotMinTime="07:00:00"
                                     slotMaxTime="19:00:00"
                                     height="auto"
                                     dateClick={handleDateClick}
-                                    events={isHireNoInstructor ? [...hireBookings, ...selectedEvents] : [...instructorBookings, ...blockedEvents, ...selectedEvents]}
+                                    events={isHireNoInstructor ? [...hireBookings, ...selectedEvents] : [...specificDateAvailableEvents, ...instructorBookings, ...blockedEvents, ...selectedEvents]}
                                     businessHours={isHireNoInstructor
                                         ? { daysOfWeek: [0, 1, 2, 3, 4, 5, 6], startTime: '07:00', endTime: '19:00' }
                                         : businessHours}
@@ -764,7 +800,7 @@ function BookingPage() {
                 )
 
                 return (
-                    <div className="bg-card border border-border p-8 rounded-[2.5rem] shadow-xl animate-in fade-in zoom-in-95 overflow-hidden">
+                    <div className="bg-card border border-border p-4 sm:p-6 md:p-8 rounded-[2.5rem] shadow-xl animate-in fade-in zoom-in-95 overflow-hidden">
                         {errorMsg && (
                             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-3 text-red-600 animate-in slide-in-from-top-2">
                                 <AlertCircle className="w-5 h-5 shrink-0" />
@@ -959,28 +995,28 @@ function BookingPage() {
     }
 
     return (
-        <div className="max-w-7xl mx-auto px-4 py-20 space-y-12 min-h-screen">
-            <div className="flex flex-col md:flex-row justify-between items-end gap-8">
-                <div className="space-y-4">
-                    <h1 className="text-4xl md:text-5xl font-bold font-outfit">Book Your <span className="text-accent underline decoration-secondary">Lesson</span></h1>
-                    <p className="text-muted-foreground">Follow the simple steps to schedule your session.</p>
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-20 space-y-8 sm:space-y-12 min-h-screen">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-8">
+                <div className="space-y-2 sm:space-y-4">
+                    <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold font-outfit">Book Your <span className="text-accent underline decoration-secondary">Lesson</span></h1>
+                    <p className="text-sm sm:text-base text-muted-foreground">Follow the simple steps to schedule your session.</p>
                 </div>
 
-                {/* Stepper */}
-                <div className="flex gap-4">
+                {/* Stepper — scrolls horizontally on very small screens */}
+                <div className="flex gap-2 sm:gap-4 overflow-x-auto pb-1 max-w-full">
                     {steps.map((step, i) => (
-                        <div key={step} className="flex items-center gap-2">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${i <= currentStep ? 'bg-accent text-white shadow-lg shadow-accent/30' : 'bg-muted text-muted-foreground'}`}>
-                                {i < currentStep ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
+                        <div key={step} className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${i <= currentStep ? 'bg-accent text-white shadow-lg shadow-accent/30' : 'bg-muted text-muted-foreground'}`}>
+                                {i < currentStep ? <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : i + 1}
                             </div>
                             <span className={`hidden sm:block text-xs font-bold uppercase tracking-widest ${i <= currentStep ? 'text-primary' : 'text-muted-foreground'}`}>{step}</span>
-                            {i < steps.length - 1 && <div className="hidden sm:block w-4 h-px bg-border" />}
+                            {i < steps.length - 1 && <div className="hidden sm:block w-3 sm:w-4 h-px bg-border" />}
                         </div>
                     ))}
                 </div>
             </div>
 
-            <div className="relative pt-12">
+            <div className="relative pt-6 sm:pt-12">
                 <AnimatePresence mode="wait">
                     <motion.div
                         key={currentStep}
@@ -994,8 +1030,8 @@ function BookingPage() {
                 </AnimatePresence>
 
                 {currentStep > 0 && currentStep < 3 && (
-                    <div className="flex justify-start pt-12">
-                        <Button variant="outline" className="rounded-xl gap-2 h-12" onClick={handleBack}>
+                    <div className="flex justify-start pt-8 sm:pt-12">
+                        <Button variant="outline" className="rounded-xl gap-2 h-10 sm:h-12 text-sm sm:text-base" onClick={handleBack}>
                             <ChevronLeft className="w-4 h-4" /> Previous Step
                         </Button>
                     </div>

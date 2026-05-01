@@ -23,7 +23,7 @@ export default function Home() {
           />
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-20 w-full">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 relative z-20 w-full">
           <motion.div
             initial={{ opacity: 0, x: -50 }}
             animate={{ opacity: 1, x: 0 }}
@@ -78,7 +78,7 @@ export default function Home() {
       </section>
 
       {/* Services Overview */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+      <section className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
         <div className="text-center space-y-4 mb-16">
           <h2 className="text-accent font-bold tracking-widest uppercase text-sm">Our Services</h2>
           <p className="text-4xl md:text-5xl font-bold font-outfit">Comprehensive Learning Solutions</p>
@@ -121,7 +121,7 @@ export default function Home() {
 
       {/* Testimonials Preview */}
       <section className="bg-primary py-24 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col lg:flex-row items-center gap-16">
             <div className="lg:w-1/2 space-y-8">
               <h2 className="text-secondary font-bold tracking-widest uppercase text-sm">Testimonials</h2>
@@ -180,7 +180,7 @@ export default function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+      <section className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
         <div className="bg-secondary rounded-[2.5rem] p-12 md:p-20 text-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-64 h-64 bg-white/20 rounded-full -translate-x-1/2 -translate-y-1/2 blur-3xl" />
           <div className="absolute bottom-0 right-0 w-64 h-64 bg-primary/10 rounded-full translate-x-1/2 translate-y-1/2 blur-3xl" />

@@ -314,7 +314,7 @@ export default function InstructorDashboard() {
     }))
 
     return (
-        <div className="max-w-7xl mx-auto px-4 py-12 space-y-12">
+        <div className="max-w-screen-2xl mx-auto px-4 py-12 space-y-12">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
                     <h1 className="text-3xl font-bold font-outfit">Instructor Dashboard</h1>

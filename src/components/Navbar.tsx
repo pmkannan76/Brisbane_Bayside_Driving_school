@@ -40,7 +40,7 @@ export const Navbar = () => {
 
     return (
         <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-white py-3 shadow-sm' : 'bg-white py-5'}`}>
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center">
                     <Link href="/" className="flex items-center gap-3">
                         <img

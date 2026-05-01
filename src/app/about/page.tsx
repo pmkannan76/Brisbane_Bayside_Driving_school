@@ -31,7 +31,7 @@ export default function AboutPage() {
             {/* Hero Section */}
             <section className="bg-primary py-24 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-96 h-96 bg-secondary/5 rounded-full translate-x-1/2 -translate-y-1/2 blur-3xl" />
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6 relative z-10">
+                <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6 relative z-10">
                     <motion.h1
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -51,7 +51,7 @@ export default function AboutPage() {
             </section>
 
             {/* Our Story */}
-            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+            <section className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
                     <div className="relative h-96 md:h-full min-h-[400px] rounded-[3rem] overflow-hidden shadow-2xl">
                         <Image
@@ -75,7 +75,7 @@ export default function AboutPage() {
             </section>
 
             {/* Our Values */}
-            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+            <section className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
                     <div className="space-y-8">
                         <h2 className="text-accent font-bold tracking-widest uppercase text-sm">Our values</h2>
@@ -113,7 +113,7 @@ export default function AboutPage() {
 
             {/* Instructors */}
             <section className="bg-muted/50 py-24">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center space-y-4 mb-16">
                         <h2 className="text-accent font-bold tracking-widest uppercase text-sm">Meet the experts</h2>
                         <p className="text-4xl font-bold font-outfit">Your Professional Instructors</p>
@@ -162,7 +162,7 @@ export default function AboutPage() {
             </section>
 
             {/* Mission/Award Section */}
-            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+            <section className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     {[
                         { icon: <Award className="w-10 h-10" />, title: "Best Rated 2024", desc: "Recognized as the top-performing driving school in the Brisbane Metro area." },

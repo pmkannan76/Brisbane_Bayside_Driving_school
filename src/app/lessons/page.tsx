@@ -81,7 +81,7 @@ export default function LessonsPage() {
         <div className="pb-20 relative">
             {/* Header */}
             <section className="bg-primary py-20">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
+                <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
                     <motion.h1
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -101,7 +101,7 @@ export default function LessonsPage() {
             </section>
 
             {/* Individual Lessons */}
-            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+            <section className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
                 <div className="flex items-center gap-4 mb-12">
                     <div className="h-px bg-border flex-grow" />
                     <h2 className="text-2xl font-bold font-outfit px-4">Individual Lessons</h2>
@@ -143,7 +143,7 @@ export default function LessonsPage() {
 
             {/* Pricing Packages */}
             <section className="bg-muted/50 py-24">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center space-y-4 mb-16">
                         <h2 className="text-accent font-bold tracking-widest uppercase text-sm">Bundle & Save</h2>
                         <p className="text-4xl font-bold font-outfit">Package Lessons</p>
@@ -203,7 +203,7 @@ export default function LessonsPage() {
 
             {/* Vehicle Hire for Test */}
             {hires.length > 0 && (
-                <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+                <section className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
                     <div className="flex items-center gap-4 mb-4">
                         <div className="h-px bg-border flex-grow" />
                         <h2 className="text-2xl font-bold font-outfit px-4">Hire a Vehicle for Your Test</h2>
@@ -248,7 +248,7 @@ export default function LessonsPage() {
             )}
 
             {/* Features Grid */}
-            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+            <section className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
                     {[
                         { icon: <Clock />, title: "Flexible Times", desc: "Lessons available 7 days a week, from 7am to 8pm." },

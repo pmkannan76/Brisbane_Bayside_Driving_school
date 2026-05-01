@@ -70,7 +70,7 @@ export default function StudentDashboard() {
     // Suggest recommendation based on last completed lesson
     const lastCompleted = bookings.filter(b => b.status === 'completed').sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())[0]
     return (
-        <div className="max-w-7xl mx-auto px-4 py-12 space-y-12">
+        <div className="max-w-screen-2xl mx-auto px-4 py-12 space-y-12">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
                     <h1 className="text-3xl font-bold font-outfit">Student Dashboard</h1>

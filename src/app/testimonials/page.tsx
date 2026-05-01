@@ -64,7 +64,7 @@ export default function TestimonialsPage() {
         <div className="pb-20">
             {/* Header */}
             <section className="bg-primary py-24">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-8">
+                <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-8">
                     <div className="flex justify-center gap-3 mb-4">
                         {reviews.slice(0, 5).map((r, i) => (
                             <div key={i} className="w-14 h-14 rounded-full border-4 border-primary overflow-hidden">
@@ -99,7 +99,7 @@ export default function TestimonialsPage() {
             </section>
 
             {/* Reviews Grid */}
-            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+            <section className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
                 {loading ? (
                     <div className="flex justify-center py-20">
                         <div className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin" />
@@ -142,7 +142,7 @@ export default function TestimonialsPage() {
 
             {/* Stats/Badge Section */}
             <section className="bg-muted py-24">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="bg-white rounded-[3rem] p-12 md:p-20 shadow-2xl border border-border flex flex-col md:flex-row items-center gap-16">
                         <div className="md:w-1/3 flex justify-center">
                             <div className="w-48 h-48 bg-secondary rounded-full flex items-center justify-center p-8 relative">
